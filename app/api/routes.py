@@ -34,6 +34,30 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+async def _background_enrich(creator_id: UUID):
+    """Shared background enrichment task — handles its own DB session and eager loading."""
+    from app.core.database import async_session_factory
+    from app.services.enrichment_service import enrich_creator, _update_status
+    from sqlalchemy.orm import selectinload
+
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(Creator).where(Creator.id == creator_id).options(selectinload(Creator.notes))
+        )
+        creator_obj = result.scalar_one_or_none()
+        if not creator_obj:
+            return
+        try:
+            await enrich_creator(creator_obj, session)
+        except Exception as e:
+            _update_status(str(creator_id),
+                status="failed",
+                error=str(e),
+                step_label=f"Failed: {str(e)[:100]}",
+            )
+            logger.error(f"Enrichment failed for {creator_id}: {e}")
+
+
 # ─── CREATOR CRUD ───
 
 @router.get("/creators", response_model=CreatorListResponse)
@@ -416,22 +440,7 @@ async def save_and_enrich_discovery_result(result_id: UUID, db: AsyncSession = D
     creator_id = creator.id
 
     # Kick off enrichment in background
-    async def _run_enrichment():
-        from app.core.database import async_session_factory
-        async with async_session_factory() as session:
-            creator_obj = await session.get(Creator, creator_id)
-            if creator_obj:
-                try:
-                    await enrich_creator(creator_obj, session)
-                except Exception as e:
-                    _update_status(str(creator_id),
-                        status="failed",
-                        error=str(e),
-                        step_label=f"Failed: {str(e)[:100]}",
-                    )
-                    logger.error(f"Enrichment failed for {creator_id}: {e}")
-
-    asyncio.create_task(_run_enrichment())
+    asyncio.create_task(_background_enrich(creator_id))
 
     return {
         "creator": CreatorResponse.model_validate(creator).model_dump(),
@@ -684,6 +693,7 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
 
     return {
         "total_creators": total,
+        "with_email": with_email,
         "pipeline": pipeline_counts,
         "quality": quality_counts,
         "sources": source_counts,
@@ -721,24 +731,7 @@ async def enrich_creator_endpoint(creator_id: UUID, db: AsyncSession = Depends(g
 
     # Fire off enrichment as a background task
     import asyncio
-
-    async def _run_enrichment():
-        from app.core.database import async_session_factory
-        async with async_session_factory() as session:
-            creator_obj = await session.get(Creator, creator_id)
-            if creator_obj:
-                try:
-                    await enrich_creator(creator_obj, session)
-                except Exception as e:
-                    from app.services.enrichment_service import _update_status
-                    _update_status(str(creator_id),
-                        status="failed",
-                        error=str(e),
-                        step_label=f"Failed: {str(e)[:100]}",
-                    )
-                    logger.error(f"Enrichment failed for {creator_id}: {e}")
-
-    asyncio.create_task(_run_enrichment())
+    asyncio.create_task(_background_enrich(creator_id))
 
     return {
         "creator_id": str(creator_id),
