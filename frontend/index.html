@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Creator Discovery Engine — Luma Nutrition</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      /* Light mode */
+      --bg: #f8f7f4;
+      --bg-card: #ffffff;
+      --bg-card-hover: #fafaf8;
+      --bg-input: #ffffff;
+      --bg-sidebar: #f1f0ec;
+      --border: #e8e6e1;
+      --border-light: #f0eeea;
+      --text-primary: #1a1a18;
+      --text-secondary: #6b6960;
+      --text-tertiary: #9c978c;
+      --accent: #c45d3e;
+      --accent-light: #f5ebe6;
+      --accent-hover: #b5502f;
+      --green: #3d8b5e;
+      --green-light: #e6f3ec;
+      --yellow: #c49a3e;
+      --yellow-light: #faf3e3;
+      --red: #c44b4b;
+      --red-light: #fae6e6;
+      --blue: #4b7dc4;
+      --blue-light: #e6eef8;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
+      --shadow-lg: 0 8px 24px rgba(0,0,0,0.08);
+      --radius: 10px;
+      --radius-sm: 6px;
+      --font-display: 'Outfit', sans-serif;
+      --font-mono: 'DM Mono', monospace;
+    }
+
+    [data-theme="dark"] {
+      --bg: #141413;
+      --bg-card: #1e1e1c;
+      --bg-card-hover: #252523;
+      --bg-input: #1e1e1c;
+      --bg-sidebar: #1a1a18;
+      --border: #2e2e2a;
+      --border-light: #252523;
+      --text-primary: #e8e6e1;
+      --text-secondary: #9c978c;
+      --text-tertiary: #6b6960;
+      --accent: #e07a5a;
+      --accent-light: #2a1f1a;
+      --accent-hover: #c45d3e;
+      --green: #5eb87e;
+      --green-light: #1a2a20;
+      --yellow: #e0b85a;
+      --yellow-light: #2a2518;
+      --red: #e06b6b;
+      --red-light: #2a1a1a;
+      --blue: #6b9de0;
+      --blue-light: #1a2230;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.3);
+      --shadow-lg: 0 8px 24px rgba(0,0,0,0.4);
+    }
+
+    body {
+      font-family: var(--font-display);
+      background: var(--bg);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    #root { min-height: 100vh; }
+
+    input, textarea, select, button { font-family: inherit; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
+
+    /* Animations */
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes slideDown { from { opacity: 0; max-height: 0; } to { opacity: 1; max-height: 2000px; } }
+
+    .fade-in { animation: fadeIn 0.3s ease forwards; }
+    .pulse { animation: pulse 1.5s ease-in-out infinite; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useRef } = React;
+
+    // ─── CONFIG ───
+    const API = 'https://creator-engine-production.up.railway.app/api';
+
+    // ─── API HELPERS ───
+    async function api(path, opts = {}) {
+      const { method = 'GET', body, params } = opts;
+      let url = `${API}${path}`;
+      if (params) {
+        const sp = new URLSearchParams();
+        Object.entries(params).forEach(([k, v]) => {
+          if (v !== null && v !== undefined && v !== '') sp.append(k, v);
+        });
+        const qs = sp.toString();
+        if (qs) url += `?${qs}`;
+      }
+      const res = await fetch(url, {
+        method,
+        headers: body ? { 'Content-Type': 'application/json' } : {},
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || 'API error');
+      }
+      return res.json();
+    }
+
+    // ─── ICONS (inline SVG) ───
+    const Icons = {
+      search: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>,
+      moon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>,
+      sun: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>,
+      users: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+      compass: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>,
+      upload: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
+      chevDown: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>,
+      chevRight: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>,
+      mail: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>,
+      star: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
+      zap: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+      check: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>,
+      x: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>,
+      loader: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{animation:'spin 1s linear infinite'}}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>,
+      ext: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/></svg>,
+      filter: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>,
+      clipboard: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>,
+    };
+
+    // ─── THEME TOGGLE ───
+    function ThemeToggle({ dark, onToggle }) {
+      return (
+        <button onClick={onToggle} style={{
+          display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
+          background: 'var(--bg-card)', border: '1px solid var(--border)',
+          borderRadius: 20, cursor: 'pointer', color: 'var(--text-secondary)',
+          fontSize: 12, fontWeight: 500, transition: 'all 0.2s',
+        }}>
+          {dark ? Icons.sun : Icons.moon}
+          {dark ? 'Light' : 'Dark'}
+        </button>
+      );
+    }
+
+    // ─── PILL / BADGE ───
+    function Pill({ children, color = 'var(--text-tertiary)', bg = 'var(--border-light)', style = {} }) {
+      return (
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+          padding: '2px 8px', borderRadius: 20, fontSize: 11,
+          fontFamily: 'var(--font-mono)', fontWeight: 500,
+          color, background: bg, whiteSpace: 'nowrap', ...style,
+        }}>{children}</span>
+      );
+    }
+
+    function QualityBadge({ tier }) {
+      const map = {
+        'A+': { color: 'var(--green)', bg: 'var(--green-light)' },
+        'A': { color: 'var(--green)', bg: 'var(--green-light)' },
+        'B': { color: 'var(--blue)', bg: 'var(--blue-light)' },
+        'C': { color: 'var(--yellow)', bg: 'var(--yellow-light)' },
+        'D': { color: 'var(--red)', bg: 'var(--red-light)' },
+      };
+      const s = map[tier] || { color: 'var(--text-tertiary)', bg: 'var(--border-light)' };
+      return <Pill color={s.color} bg={s.bg}>{tier || 'Unrated'}</Pill>;
+    }
+
+    function PriorityBadge({ level }) {
+      const map = {
+        high: { color: 'var(--green)', bg: 'var(--green-light)', label: 'High Priority' },
+        medium: { color: 'var(--yellow)', bg: 'var(--yellow-light)', label: 'Medium' },
+        low: { color: 'var(--text-tertiary)', bg: 'var(--border-light)', label: 'Low' },
+      };
+      const s = map[level] || map.low;
+      return <Pill color={s.color} bg={s.bg}>{s.label}</Pill>;
+    }
+
+    // ─── STAT BOX ───
+    function StatBox({ label, value, sub }) {
+      return (
+        <div style={{
+          padding: '16px 20px', background: 'var(--bg-card)',
+          border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+          minWidth: 140,
+        }}>
+          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{label}</div>
+          <div style={{ fontSize: 28, fontWeight: 600, lineHeight: 1.1 }}>{value}</div>
+          {sub && <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>{sub}</div>}
+        </div>
+      );
+    }
+
+    // ─── FORMAT HELPERS ───
+    function fmtNum(n) {
+      if (!n && n !== 0) return '—';
+      if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+      if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+      return n.toLocaleString();
+    }
+
+    function platformIcon(p) {
+      const colors = { tiktok: '#000', instagram: '#E1306C', youtube: '#FF0000', twitter: '#1DA1F2' };
+      return <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: colors[p] || 'var(--text-secondary)' }}>
+        {p === 'tiktok' ? 'TT' : p === 'instagram' ? 'IG' : p === 'youtube' ? 'YT' : p === 'twitter' ? 'X' : p?.toUpperCase?.()?.slice(0,2) || ''}
+      </span>;
+    }
+
+    // ─── ENRICHMENT PROGRESS BAR ───
+    function EnrichmentProgress({ creatorId, onComplete }) {
+      const [status, setStatus] = useState(null);
+      const intervalRef = useRef(null);
+
+      useEffect(() => {
+        if (!creatorId) return;
+        const poll = async () => {
+          try {
+            const s = await api(`/creators/${creatorId}/enrich/status`);
+            setStatus(s);
+            if (s.status === 'complete' || s.status === 'failed') {
+              clearInterval(intervalRef.current);
+              if (s.status === 'complete' && onComplete) onComplete();
+            }
+          } catch (e) { /* ignore */ }
+        };
+        poll();
+        intervalRef.current = setInterval(poll, 2000);
+        return () => clearInterval(intervalRef.current);
+      }, [creatorId]);
+
+      if (!status || status.status === 'not_started') return null;
+
+      const pct = status.status === 'complete' ? 100 : ((status.step || 0) / (status.total_steps || 3)) * 100;
+      const isRunning = !['complete', 'failed', 'not_started'].includes(status.status);
+
+      return (
+        <div style={{ padding: '12px 16px', background: 'var(--accent-light)', borderRadius: 'var(--radius-sm)', marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+              {isRunning && Icons.loader}
+              {status.status === 'complete' && <span style={{ color: 'var(--green)' }}>{Icons.check}</span>}
+              {status.status === 'failed' && <span style={{ color: 'var(--red)' }}>{Icons.x}</span>}
+              {status.step_label || status.status}
+            </span>
+            <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)' }}>
+              {status.step}/{status.total_steps}
+            </span>
+          </div>
+          <div style={{ height: 3, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
+            <div style={{
+              height: '100%', background: status.status === 'failed' ? 'var(--red)' : 'var(--accent)',
+              borderRadius: 2, width: `${pct}%`, transition: 'width 0.5s ease',
+            }} />
+          </div>
+          {status.error && <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 6 }}>{status.error}</div>}
+        </div>
+      );
+    }
+
+    // ─── STRATEGY PANEL ───
+    function StrategyPanel({ creatorId, strategy }) {
+      const [data, setData] = useState(strategy || null);
+      const [loading, setLoading] = useState(false);
+      const [copied, setCopied] = useState(null);
+
+      useEffect(() => {
+        if (strategy) { setData(strategy); return; }
+        if (!creatorId) return;
+        setLoading(true);
+        api(`/creators/${creatorId}/strategy`).then(r => {
+          if (r.has_strategy) setData(r.strategy);
+        }).catch(() => {}).finally(() => setLoading(false));
+      }, [creatorId, strategy]);
+
+      const copyText = (text, label) => {
+        navigator.clipboard.writeText(text).then(() => {
+          setCopied(label);
+          setTimeout(() => setCopied(null), 2000);
+        });
+      };
+
+      if (loading) return <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-tertiary)' }}>{Icons.loader} Loading strategy...</div>;
+      if (!data) return <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13 }}>No strategy yet — click Enrich to generate one.</div>;
+
+      const Section = ({ title, children, icon }) => (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
+            {icon} {title}
+          </div>
+          <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--text-secondary)' }}>{children}</div>
+        </div>
+      );
+
+      return (
+        <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+          {/* Header stats row */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+            {data.recommended_product && <Pill color="var(--accent)" bg="var(--accent-light)">{data.recommended_product}</Pill>}
+            {data.brand_fit_score && <Pill color="var(--green)" bg="var(--green-light)">{Icons.star} Fit: {data.brand_fit_score}/10</Pill>}
+            {data.priority_level && <PriorityBadge level={data.priority_level} />}
+            {data.estimated_rate_range && <Pill>{data.estimated_rate_range}</Pill>}
+          </div>
+
+          <Section title="Summary" icon={Icons.users}>{data.creator_summary}</Section>
+          <Section title="Brand Fit" icon={Icons.star}>{data.brand_fit_reasoning}</Section>
+          <Section title="Outreach Angle" icon={Icons.zap}>{data.outreach_angle}</Section>
+
+          {data.personalization_hooks?.length > 0 && (
+            <Section title="Personalization Hooks" icon={Icons.check}>
+              <ul style={{ paddingLeft: 16, margin: 0 }}>
+                {data.personalization_hooks.map((h, i) => <li key={i} style={{ marginBottom: 4 }}>{h}</li>)}
+              </ul>
+            </Section>
+          )}
+
+          {data.content_ideas?.length > 0 && (
+            <Section title="Content Ideas" icon={Icons.compass}>
+              <ul style={{ paddingLeft: 16, margin: 0 }}>
+                {data.content_ideas.map((c, i) => <li key={i} style={{ marginBottom: 4 }}>{c}</li>)}
+              </ul>
+            </Section>
+          )}
+
+          {/* Draft Email */}
+          {data.suggested_email_body && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  {Icons.mail} Draft Email
+                </div>
+                <button onClick={() => copyText(`Subject: ${data.suggested_subject_line}\n\n${data.suggested_email_body}`, 'email')} style={{
+                  display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px',
+                  background: 'none', border: '1px solid var(--border)', borderRadius: 4,
+                  cursor: 'pointer', fontSize: 11, color: copied === 'email' ? 'var(--green)' : 'var(--text-secondary)',
+                }}>
+                  {copied === 'email' ? Icons.check : Icons.clipboard} {copied === 'email' ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+              <div style={{
+                padding: 12, background: 'var(--bg)', borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)', fontSize: 12, fontFamily: 'var(--font-mono)',
+                lineHeight: 1.7, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap',
+              }}>
+                <div style={{ fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>
+                  Subject: {data.suggested_subject_line}
+                </div>
+                {data.suggested_email_body}
+              </div>
+            </div>
+          )}
+
+          {data.red_flags?.length > 0 && (
+            <Section title="Red Flags" icon={Icons.x}>
+              <ul style={{ paddingLeft: 16, margin: 0 }}>
+                {data.red_flags.map((f, i) => <li key={i} style={{ marginBottom: 4, color: 'var(--red)' }}>{f}</li>)}
+              </ul>
+            </Section>
+          )}
+        </div>
+      );
+    }
+
+    // ─── CREATOR CARD ───
+    function CreatorCard({ creator, onEnrich, onSaveAndEnrich, isDiscoveryResult }) {
+      const [expanded, setExpanded] = useState(false);
+      const [enriching, setEnriching] = useState(false);
+      const [enrichDone, setEnrichDone] = useState(false);
+      const [localCreator, setLocalCreator] = useState(creator);
+
+      const c = localCreator;
+      const ai = c.ai_analysis || {};
+      const strategy = ai.outreach_strategy;
+      const hasStrategy = !!strategy;
+
+      const platforms = [];
+      if (c.tiktok_handle || c.tiktok_url) platforms.push({ name: 'tiktok', handle: c.tiktok_handle, followers: c.tiktok_followers, url: c.tiktok_url });
+      if (c.instagram_handle || c.instagram_url) platforms.push({ name: 'instagram', handle: c.instagram_handle, followers: c.instagram_followers, url: c.instagram_url });
+      if (c.youtube_handle || c.youtube_url) platforms.push({ name: 'youtube', handle: c.youtube_handle, followers: c.youtube_subscribers, url: c.youtube_url });
+      if (c.twitter_handle || c.twitter_url) platforms.push({ name: 'twitter', handle: c.twitter_handle, followers: c.twitter_followers, url: c.twitter_url });
+
+      const handleEnrich = async () => {
+        setEnriching(true);
+        setExpanded(true);
+        try {
+          if (isDiscoveryResult && onSaveAndEnrich) {
+            await onSaveAndEnrich(c);
+          } else if (onEnrich) {
+            await onEnrich(c.id);
+          }
+        } catch (e) { console.error(e); }
+      };
+
+      const handleEnrichComplete = async () => {
+        // Re-fetch creator to get the strategy
+        try {
+          const updated = await api(`/creators/${c.id || enriching}`);
+          setLocalCreator(updated);
+          setEnrichDone(true);
+        } catch (e) { /* ignore */ }
+        setEnriching(false);
+      };
+
+      return (
+        <div className="fade-in" style={{
+          background: 'var(--bg-card)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius)', overflow: 'hidden',
+          transition: 'box-shadow 0.2s, border-color 0.2s',
+          boxShadow: expanded ? 'var(--shadow-md)' : 'var(--shadow-sm)',
+          borderColor: expanded ? 'var(--accent)' : 'var(--border)',
+        }}>
+          {/* Card header */}
+          <div
+            onClick={() => setExpanded(!expanded)}
+            style={{
+              display: 'flex', alignItems: 'center', padding: '14px 18px',
+              cursor: 'pointer', gap: 12, userSelect: 'none',
+            }}
+          >
+            {/* Avatar placeholder */}
+            <div style={{
+              width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
+              background: 'var(--accent-light)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 14, fontWeight: 600, color: 'var(--accent)',
+            }}>
+              {(c.name || '?')[0]?.toUpperCase()}
+            </div>
+
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</span>
+                <QualityBadge tier={c.quality_tier} />
+                {hasStrategy && <PriorityBadge level={strategy.priority_level} />}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3, flexWrap: 'wrap' }}>
+                {platforms.map(p => (
+                  <span key={p.name} style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 3 }}>
+                    {platformIcon(p.name)} {p.handle ? `@${p.handle.replace('@','')}` : ''} {p.followers ? `(${fmtNum(p.followers)})` : ''}
+                  </span>
+                ))}
+                {c.categories?.length > 0 && c.categories.slice(0, 3).map(cat => (
+                  <Pill key={cat} style={{ fontSize: 10 }}>{cat}</Pill>
+                ))}
+              </div>
+            </div>
+
+            {/* Right side: score + actions */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              {c.relevance_score != null && (
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'var(--font-mono)', color: c.relevance_score >= 70 ? 'var(--green)' : c.relevance_score >= 40 ? 'var(--yellow)' : 'var(--text-tertiary)' }}>
+                    {Math.round(c.relevance_score)}
+                  </div>
+                  <div style={{ fontSize: 9, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Score</div>
+                </div>
+              )}
+              <span style={{ color: 'var(--text-tertiary)', transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                {Icons.chevDown}
+              </span>
+            </div>
+          </div>
+
+          {/* Expanded content */}
+          {expanded && (
+            <div style={{ borderTop: '1px solid var(--border)', padding: '16px 18px' }}>
+              {/* Quick info row */}
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+                {c.email && (
+                  <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {Icons.mail} {c.email}
+                  </span>
+                )}
+                {c.pipeline_stage && <Pill>{c.pipeline_stage}</Pill>}
+                {platforms.map(p => p.url && (
+                  <a key={p.name} href={p.url} target="_blank" rel="noopener" style={{ fontSize: 11, color: 'var(--accent)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 3 }}>
+                    {platformIcon(p.name)} Profile {Icons.ext}
+                  </a>
+                ))}
+              </div>
+
+              {c.bio && (
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 16, maxHeight: 80, overflow: 'hidden' }}>
+                  {c.bio}
+                </div>
+              )}
+
+              {/* Action buttons */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                {!hasStrategy && !enriching && (
+                  <button onClick={handleEnrich} style={{
+                    display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
+                    background: 'var(--accent)', color: '#fff', border: 'none',
+                    borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                    transition: 'background 0.2s',
+                  }}>
+                    {Icons.zap} {isDiscoveryResult ? 'Save & Enrich' : 'Enrich'}
+                  </button>
+                )}
+                {hasStrategy && (
+                  <button onClick={() => {
+                    const text = `Subject: ${strategy.suggested_subject_line}\n\n${strategy.suggested_email_body}`;
+                    navigator.clipboard.writeText(text);
+                  }} style={{
+                    display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
+                    background: 'var(--bg)', border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 12, fontWeight: 500,
+                    color: 'var(--text-secondary)',
+                  }}>
+                    {Icons.clipboard} Copy Email
+                  </button>
+                )}
+              </div>
+
+              {/* Enrichment progress */}
+              {enriching && c.id && (
+                <EnrichmentProgress creatorId={c.id} onComplete={handleEnrichComplete} />
+              )}
+
+              {/* Strategy panel */}
+              {(hasStrategy || enrichDone) && (
+                <StrategyPanel creatorId={c.id} strategy={strategy} />
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ─── DISCOVER TAB ───
+    function DiscoverTab() {
+      const [query, setQuery] = useState('');
+      const [searching, setSearching] = useState(false);
+      const [results, setResults] = useState(null);
+      const [error, setError] = useState(null);
+
+      const presets = [
+        { label: 'Doctor TikTok', query: 'doctors who talk about heart health on TikTok' },
+        { label: 'Gen Z Wellness', query: 'Gen Z wellness creators on Instagram and TikTok' },
+        { label: 'Gut Health', query: 'gut health nutrition creators with 50k-500k followers' },
+        { label: 'Mom Creators', query: 'mom health and fitness influencers on Instagram' },
+        { label: 'UGC Creators', query: 'UGC creators specializing in health supplements' },
+        { label: 'Longevity', query: 'longevity biohacking creators on YouTube' },
+      ];
+
+      const doSearch = async (q) => {
+        if (!q.trim()) return;
+        setSearching(true);
+        setError(null);
+        setResults(null);
+        try {
+          const data = await api('/discover', { method: 'POST', body: { query: q, platforms: ['tiktok', 'instagram', 'youtube'], max_results: 20 } });
+          setResults(data);
+        } catch (e) {
+          setError(e.message);
+        }
+        setSearching(false);
+      };
+
+      const handleSaveAndEnrich = async (result) => {
+        try {
+          const saved = await api(`/discover/results/${result.id}/save-and-enrich`, { method: 'POST' });
+          // Update the result in-place with the creator ID for polling
+          setResults(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              results: prev.results.map(r =>
+                r.id === result.id ? { ...r, id: saved.creator.id, ...saved.creator, _saved: true } : r
+              ),
+            };
+          });
+          return saved;
+        } catch (e) {
+          throw e;
+        }
+      };
+
+      return (
+        <div>
+          {/* Search bar */}
+          <div style={{ marginBottom: 24 }}>
+            <div style={{
+              display: 'flex', gap: 8, background: 'var(--bg-input)',
+              border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+              padding: '4px 4px 4px 16px', alignItems: 'center',
+              boxShadow: 'var(--shadow-sm)', transition: 'border-color 0.2s',
+            }}>
+              <span style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}>{Icons.search}</span>
+              <input
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && doSearch(query)}
+                placeholder="Find doctors who talk about heart health on TikTok..."
+                style={{
+                  flex: 1, border: 'none', outline: 'none', background: 'transparent',
+                  fontSize: 14, color: 'var(--text-primary)', padding: '10px 0',
+                }}
+              />
+              <button
+                onClick={() => doSearch(query)}
+                disabled={searching || !query.trim()}
+                style={{
+                  padding: '10px 20px', background: searching ? 'var(--border)' : 'var(--accent)',
+                  color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)',
+                  cursor: searching ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600,
+                  display: 'flex', alignItems: 'center', gap: 6, transition: 'background 0.2s',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {searching ? Icons.loader : Icons.compass}
+                {searching ? 'Searching...' : 'Discover'}
+              </button>
+            </div>
+          </div>
+
+          {/* Preset chips */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 24 }}>
+            {presets.map(p => (
+              <button
+                key={p.label}
+                onClick={() => { setQuery(p.query); doSearch(p.query); }}
+                style={{
+                  padding: '6px 12px', background: 'var(--bg-card)', border: '1px solid var(--border)',
+                  borderRadius: 20, cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)',
+                  fontWeight: 500, transition: 'all 0.2s', whiteSpace: 'nowrap',
+                }}
+                onMouseEnter={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.color = 'var(--accent)'; }}
+                onMouseLeave={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.color = 'var(--text-secondary)'; }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {error && (
+            <div style={{ padding: '12px 16px', background: 'var(--red-light)', borderRadius: 'var(--radius-sm)', color: 'var(--red)', fontSize: 13, marginBottom: 16 }}>
+              {error}
+            </div>
+          )}
+
+          {/* Results */}
+          {results && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                  Found <strong>{results.results_count || results.results?.length || 0}</strong> creators
+                </div>
+                {results.parsed_intent && (
+                  <Pill>{results.parsed_intent.primary_niche || 'General'}</Pill>
+                )}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {results.results?.map((r, i) => (
+                  <CreatorCard
+                    key={r.id || i}
+                    creator={{
+                      ...r,
+                      quality_tier: r.quality_tier || 'Unrated',
+                      categories: r.categories || [],
+                    }}
+                    isDiscoveryResult={!r._saved}
+                    onSaveAndEnrich={handleSaveAndEnrich}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!results && !searching && (
+            <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-tertiary)' }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>{Icons.compass}</div>
+              <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 6, color: 'var(--text-secondary)' }}>Discover creators</div>
+              <div style={{ fontSize: 13, maxWidth: 360, margin: '0 auto' }}>
+                Search naturally — "find doctors who talk about heart health on TikTok" — and AI will find, score, and generate outreach strategies.
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ─── DATABASE TAB ───
+    function DatabaseTab() {
+      const [creators, setCreators] = useState([]);
+      const [total, setTotal] = useState(0);
+      const [loading, setLoading] = useState(true);
+      const [search, setSearch] = useState('');
+      const [filters, setFilters] = useState({});
+      const [page, setPage] = useState(1);
+
+      const load = useCallback(async () => {
+        setLoading(true);
+        try {
+          const data = await api('/creators', {
+            params: { search: search || undefined, page, per_page: 30, sort_by: 'created_at', sort_dir: 'desc', ...filters },
+          });
+          setCreators(data.creators || []);
+          setTotal(data.total || 0);
+        } catch (e) { console.error(e); }
+        setLoading(false);
+      }, [search, page, filters]);
+
+      useEffect(() => { load(); }, [load]);
+
+      const handleEnrich = async (creatorId) => {
+        await api(`/creators/${creatorId}/enrich`, { method: 'POST' });
+        return creatorId;
+      };
+
+      return (
+        <div>
+          {/* Search + filter bar */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+            <div style={{
+              flex: 1, display: 'flex', alignItems: 'center', gap: 8,
+              padding: '0 14px', background: 'var(--bg-input)',
+              border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+            }}>
+              <span style={{ color: 'var(--text-tertiary)' }}>{Icons.search}</span>
+              <input
+                value={search}
+                onChange={e => { setSearch(e.target.value); setPage(1); }}
+                placeholder="Search by name, handle, email..."
+                style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, color: 'var(--text-primary)', padding: '10px 0' }}
+              />
+            </div>
+            <select
+              onChange={e => { setFilters(f => ({ ...f, pipeline_stage: e.target.value || undefined })); setPage(1); }}
+              style={{
+                padding: '8px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)', fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer',
+              }}
+            >
+              <option value="">All Stages</option>
+              <option value="discovered">Discovered</option>
+              <option value="contacted">Contacted</option>
+              <option value="negotiating">Negotiating</option>
+              <option value="contracted">Contracted</option>
+              <option value="active">Active</option>
+            </select>
+            <select
+              onChange={e => { setFilters(f => ({ ...f, quality_tier: e.target.value || undefined })); setPage(1); }}
+              style={{
+                padding: '8px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)', fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer',
+              }}
+            >
+              <option value="">All Tiers</option>
+              <option value="A+">A+</option>
+              <option value="A">A</option>
+              <option value="B">B</option>
+              <option value="C">C</option>
+            </select>
+          </div>
+
+          {/* Count */}
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
+            {total} creator{total !== 1 ? 's' : ''}
+          </div>
+
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-tertiary)' }}>{Icons.loader} Loading...</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {creators.map(c => (
+                <CreatorCard key={c.id} creator={c} onEnrich={handleEnrich} />
+              ))}
+              {creators.length === 0 && (
+                <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-tertiary)', fontSize: 13 }}>
+                  No creators found. Try adjusting your filters or import some data.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Pagination */}
+          {total > 30 && (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 20 }}>
+              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} style={{
+                padding: '6px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)', cursor: page <= 1 ? 'not-allowed' : 'pointer',
+                fontSize: 12, color: 'var(--text-secondary)', opacity: page <= 1 ? 0.4 : 1,
+              }}>Previous</button>
+              <span style={{ padding: '6px 12px', fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)' }}>
+                Page {page} of {Math.ceil(total / 30)}
+              </span>
+              <button disabled={page >= Math.ceil(total / 30)} onClick={() => setPage(p => p + 1)} style={{
+                padding: '6px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)', cursor: page >= Math.ceil(total / 30) ? 'not-allowed' : 'pointer',
+                fontSize: 12, color: 'var(--text-secondary)', opacity: page >= Math.ceil(total / 30) ? 0.4 : 1,
+              }}>Next</button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ─── IMPORT TAB ───
+    function ImportTab() {
+      const [dragging, setDragging] = useState(false);
+      const [uploading, setUploading] = useState(false);
+      const [result, setResult] = useState(null);
+      const [error, setError] = useState(null);
+      const fileRef = useRef(null);
+
+      const doUpload = async (file) => {
+        setUploading(true);
+        setError(null);
+        setResult(null);
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+          const res = await fetch(`${API}/import`, { method: 'POST', body: formData });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || 'Upload failed');
+          }
+          setResult(await res.json());
+        } catch (e) {
+          setError(e.message);
+        }
+        setUploading(false);
+      };
+
+      const onDrop = (e) => {
+        e.preventDefault();
+        setDragging(false);
+        const file = e.dataTransfer?.files?.[0];
+        if (file) doUpload(file);
+      };
+
+      return (
+        <div>
+          <div
+            onDragOver={e => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={onDrop}
+            onClick={() => fileRef.current?.click()}
+            style={{
+              border: `2px dashed ${dragging ? 'var(--accent)' : 'var(--border)'}`,
+              borderRadius: 'var(--radius)', padding: '60px 40px',
+              textAlign: 'center', cursor: 'pointer',
+              background: dragging ? 'var(--accent-light)' : 'var(--bg-card)',
+              transition: 'all 0.2s',
+            }}
+          >
+            <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={e => e.target.files?.[0] && doUpload(e.target.files[0])} />
+            <div style={{ marginBottom: 12, color: 'var(--text-tertiary)' }}>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+            </div>
+            {uploading ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--accent)' }}>
+                {Icons.loader} Importing...
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 4 }}>
+                  Drop a CSV or Excel file here
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+                  Supports the 37-column Luma creator spreadsheet format
+                </div>
+              </>
+            )}
+          </div>
+
+          {error && (
+            <div style={{ marginTop: 16, padding: '12px 16px', background: 'var(--red-light)', borderRadius: 'var(--radius-sm)', color: 'var(--red)', fontSize: 13 }}>
+              {error}
+            </div>
+          )}
+
+          {result && (
+            <div className="fade-in" style={{ marginTop: 20, padding: '16px 20px', background: 'var(--green-light)', borderRadius: 'var(--radius)', border: '1px solid var(--green)' }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--green)', marginBottom: 8 }}>
+                {Icons.check} Import Complete
+              </div>
+              <div style={{ display: 'flex', gap: 20, fontSize: 13, color: 'var(--text-secondary)' }}>
+                <span><strong>{result.imported}</strong> imported</span>
+                <span><strong>{result.duplicates_skipped}</strong> duplicates skipped</span>
+                {result.errors?.length > 0 && <span style={{ color: 'var(--red)' }}><strong>{result.errors.length}</strong> errors</span>}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ─── MAIN APP ───
+    function App() {
+      const [dark, setDark] = useState(() => window.matchMedia?.('(prefers-color-scheme: dark)').matches);
+      const [tab, setTab] = useState('discover');
+      const [stats, setStats] = useState(null);
+
+      useEffect(() => {
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      }, [dark]);
+
+      useEffect(() => {
+        api('/stats').then(setStats).catch(() => {});
+      }, [tab]);
+
+      const tabs = [
+        { id: 'discover', label: 'Discover', icon: Icons.compass },
+        { id: 'database', label: 'Database', icon: Icons.users },
+        { id: 'import', label: 'Import', icon: Icons.upload },
+      ];
+
+      return (
+        <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+          {/* Top bar */}
+          <header style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '12px 24px', borderBottom: '1px solid var(--border)',
+            background: 'var(--bg-card)', position: 'sticky', top: 0, zIndex: 100,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.02em' }}>
+                Creator Engine
+              </span>
+              <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', padding: '2px 6px', background: 'var(--accent-light)', borderRadius: 4, color: 'var(--accent)' }}>
+                Luma Nutrition
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {stats && (
+                <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', marginRight: 8 }}>
+                  {stats.total_creators || 0} creators
+                </span>
+              )}
+              <ThemeToggle dark={dark} onToggle={() => setDark(d => !d)} />
+            </div>
+          </header>
+
+          {/* Tab nav */}
+          <nav style={{
+            display: 'flex', gap: 0, padding: '0 24px',
+            borderBottom: '1px solid var(--border)', background: 'var(--bg-card)',
+          }}>
+            {tabs.map(t => (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '12px 16px', border: 'none', background: 'transparent',
+                  cursor: 'pointer', fontSize: 13, fontWeight: tab === t.id ? 600 : 400,
+                  color: tab === t.id ? 'var(--accent)' : 'var(--text-secondary)',
+                  borderBottom: tab === t.id ? '2px solid var(--accent)' : '2px solid transparent',
+                  transition: 'all 0.2s', marginBottom: -1,
+                }}
+              >
+                {t.icon} {t.label}
+              </button>
+            ))}
+          </nav>
+
+          {/* Content */}
+          <main style={{ flex: 1, padding: '24px', maxWidth: 860, width: '100%', margin: '0 auto' }}>
+            {/* Stats row */}
+            {tab === 'database' && stats && (
+              <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
+                <StatBox label="Total" value={stats.total_creators || 0} />
+                <StatBox label="With Email" value={stats.with_email || 0} />
+                <StatBox label="Enriched" value={stats.enriched || stats.with_strategy || '—'} />
+                <StatBox label="Avg Score" value={stats.avg_relevance ? Math.round(stats.avg_relevance) : '—'} />
+              </div>
+            )}
+
+            {tab === 'discover' && <DiscoverTab />}
+            {tab === 'database' && <DatabaseTab />}
+            {tab === 'import' && <ImportTab />}
+          </main>
+
+          {/* Footer */}
+          <footer style={{
+            padding: '12px 24px', borderTop: '1px solid var(--border)',
+            fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'center',
+            fontFamily: 'var(--font-mono)',
+          }}>
+            Creator Discovery Engine v1.0 · Luma Nutrition · <a href="https://creator-engine-production.up.railway.app/docs" target="_blank" rel="noopener" style={{ color: 'var(--accent)', textDecoration: 'none' }}>API Docs</a>
+          </footer>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

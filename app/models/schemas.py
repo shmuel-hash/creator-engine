@@ -79,9 +79,11 @@ class CreatorUpdate(BaseModel):
 class CreatorResponse(CreatorBase):
     id: UUID
     source: str
+    source_details: Optional[dict] = None
     relevance_score: Optional[float] = None
     engagement_rate: Optional[float] = None
     total_followers: Optional[int] = None
+    ai_analysis: Optional[dict] = None
     clickup_task_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
@@ -219,3 +221,18 @@ class CreatorFilter(BaseModel):
     per_page: int = 50
     sort_by: str = "created_at"
     sort_dir: str = "desc"
+
+
+# ─── ENRICHMENT SCHEMAS ───
+
+class EnrichmentStatus(BaseModel):
+    """Tracks progress of async enrichment pipeline."""
+    creator_id: UUID
+    status: str  # pending, finding_email, analyzing_content, generating_strategy, complete, failed
+    step: int  # 1-3
+    total_steps: int = 3
+    step_label: str = ""
+    result: Optional[dict] = None
+    error: Optional[str] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None

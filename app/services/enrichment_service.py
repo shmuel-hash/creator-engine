@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.models import Creator, CreatorNote
+from app.services.discovery_engine import extract_json
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -313,13 +314,11 @@ async def generate_outreach_strategy(
         )
 
         text = response.content[0].text
-        text = re.sub(r"```json\s*", "", text)
-        text = re.sub(r"```\s*", "", text)
 
-        return json.loads(text)
+        return extract_json(text)
 
     except json.JSONDecodeError:
-        logger.error(f"Failed to parse outreach strategy response")
+        logger.error(f"Failed to parse outreach strategy response: {text[:200]}")
         return {"error": "Failed to parse AI response", "raw": text[:500]}
     except Exception as e:
         logger.error(f"Outreach strategy generation failed: {e}")
@@ -327,6 +326,22 @@ async def generate_outreach_strategy(
 
 
 # ─── FULL ENRICHMENT PIPELINE ───
+
+# In-memory enrichment status tracker (works for single-instance Railway)
+_enrichment_jobs: dict[str, dict] = {}
+
+
+def get_enrichment_status(creator_id: str) -> dict | None:
+    """Get current enrichment status for a creator."""
+    return _enrichment_jobs.get(creator_id)
+
+
+def _update_status(creator_id: str, **kwargs):
+    """Update enrichment status."""
+    if creator_id not in _enrichment_jobs:
+        _enrichment_jobs[creator_id] = {}
+    _enrichment_jobs[creator_id].update(kwargs)
+
 
 async def enrich_creator(
     creator: Creator,
@@ -338,7 +353,16 @@ async def enrich_creator(
     2. Analyze their content & partnerships
     3. Generate outreach strategy
     4. Update the database record
+
+    Updates _enrichment_jobs in-memory so the frontend can poll for progress.
     """
+    cid = str(creator.id)
+    _update_status(cid,
+        status="finding_email", step=1, total_steps=3,
+        step_label="Finding email...",
+        started_at=datetime.utcnow().isoformat(),
+    )
+
     handle = (
         creator.tiktok_handle or
         creator.instagram_handle or
@@ -385,8 +409,14 @@ async def enrich_creator(
                 note_type="ai_analysis",
             )
             creator.notes.append(note)
+    else:
+        enrichment["email_search"] = {"skipped": True, "reason": "email already exists"}
 
     # Step 2: Analyze content & partnerships
+    _update_status(cid,
+        status="analyzing_content", step=2,
+        step_label="Analyzing content & partnerships...",
+    )
     logger.info(f"[Enrich] Analyzing content for {handle}...")
     content_analysis = await analyze_creator_content(
         handle=handle,
@@ -396,6 +426,10 @@ async def enrich_creator(
     enrichment["content_analysis"] = content_analysis
 
     # Step 3: Generate outreach strategy
+    _update_status(cid,
+        status="generating_strategy", step=3,
+        step_label="Generating outreach strategy...",
+    )
     logger.info(f"[Enrich] Generating outreach strategy for {handle}...")
     creator_data = {
         "name": creator.name,
@@ -439,5 +473,12 @@ async def enrich_creator(
 
     await db.commit()
     await db.refresh(creator)
+
+    _update_status(cid,
+        status="complete", step=3,
+        step_label="Enrichment complete",
+        completed_at=datetime.utcnow().isoformat(),
+        result=enrichment,
+    )
 
     return enrichment

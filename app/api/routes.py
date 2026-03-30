@@ -6,6 +6,7 @@ All endpoints for the creator management platform.
 
 from uuid import UUID
 from typing import Optional
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +28,7 @@ from app.services.import_service import import_spreadsheet
 from app.services.clickup_service import ClickUpService
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 # ─── CREATOR CRUD ───
@@ -258,6 +260,44 @@ async def save_discovery_result(result_id: UUID, db: AsyncSession = Depends(get_
     engine = DiscoveryEngine()
     creator = await engine.save_result_as_creator(result_id, db)
     return CreatorResponse.model_validate(creator)
+
+
+@router.post("/discover/results/{result_id}/save-and-enrich")
+async def save_and_enrich_discovery_result(result_id: UUID, db: AsyncSession = Depends(get_db)):
+    """
+    Save a discovery result as a creator AND immediately start enrichment.
+    One-click: discover → save → find email → analyze content → generate strategy.
+    """
+    import asyncio
+    from app.services.enrichment_service import enrich_creator, _update_status
+
+    engine = DiscoveryEngine()
+    creator = await engine.save_result_as_creator(result_id, db)
+    creator_id = creator.id
+
+    # Kick off enrichment in background
+    async def _run_enrichment():
+        from app.core.database import async_session_factory
+        async with async_session_factory() as session:
+            creator_obj = await session.get(Creator, creator_id)
+            if creator_obj:
+                try:
+                    await enrich_creator(creator_obj, session)
+                except Exception as e:
+                    _update_status(str(creator_id),
+                        status="failed",
+                        error=str(e),
+                        step_label=f"Failed: {str(e)[:100]}",
+                    )
+                    logger.error(f"Enrichment failed for {creator_id}: {e}")
+
+    asyncio.create_task(_run_enrichment())
+
+    return {
+        "creator": CreatorResponse.model_validate(creator).model_dump(),
+        "enrichment_status": "started",
+        "message": "Creator saved. Enrichment running — poll /creators/{id}/enrich/status for progress.",
+    }
 
 
 @router.get("/discover/history")
@@ -517,19 +557,75 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
 @router.post("/creators/{creator_id}/enrich")
 async def enrich_creator_endpoint(creator_id: UUID, db: AsyncSession = Depends(get_db)):
     """
-    Run full enrichment on a creator:
+    Start async enrichment on a creator:
     1. Find their email from bio/linktree/web
     2. Analyze their recent content & brand partnerships
     3. Generate personalized outreach strategy with AI
+
+    Returns immediately with status. Poll GET /creators/{id}/enrich/status for progress.
     """
-    from app.services.enrichment_service import enrich_creator
+    from app.services.enrichment_service import enrich_creator, get_enrichment_status
 
     creator = await db.get(Creator, creator_id)
     if not creator:
         raise HTTPException(status_code=404, detail="Creator not found")
 
-    result = await enrich_creator(creator, db)
-    return result
+    # Check if already running
+    existing = get_enrichment_status(str(creator_id))
+    if existing and existing.get("status") not in ("complete", "failed", None):
+        return {
+            "creator_id": str(creator_id),
+            "status": existing.get("status"),
+            "message": "Enrichment already in progress",
+        }
+
+    # Fire off enrichment as a background task
+    import asyncio
+
+    async def _run_enrichment():
+        from app.core.database import async_session_factory
+        async with async_session_factory() as session:
+            creator_obj = await session.get(Creator, creator_id)
+            if creator_obj:
+                try:
+                    await enrich_creator(creator_obj, session)
+                except Exception as e:
+                    from app.services.enrichment_service import _update_status
+                    _update_status(str(creator_id),
+                        status="failed",
+                        error=str(e),
+                        step_label=f"Failed: {str(e)[:100]}",
+                    )
+                    logger.error(f"Enrichment failed for {creator_id}: {e}")
+
+    asyncio.create_task(_run_enrichment())
+
+    return {
+        "creator_id": str(creator_id),
+        "status": "started",
+        "message": "Enrichment started. Poll /enrich/status for progress.",
+    }
+
+
+@router.get("/creators/{creator_id}/enrich/status")
+async def enrich_status(creator_id: UUID):
+    """Poll enrichment progress for a creator."""
+    from app.services.enrichment_service import get_enrichment_status
+
+    status = get_enrichment_status(str(creator_id))
+    if not status:
+        return {
+            "creator_id": str(creator_id),
+            "status": "not_started",
+            "step": 0,
+            "total_steps": 3,
+            "step_label": "Not started",
+        }
+
+    return {
+        "creator_id": str(creator_id),
+        **status,
+    }
 
 
 @router.post("/creators/{creator_id}/find-email")
@@ -563,6 +659,35 @@ async def find_email_endpoint(creator_id: UUID, db: AsyncSession = Depends(get_d
         await db.commit()
 
     return result
+
+
+@router.get("/creators/{creator_id}/strategy")
+async def get_creator_strategy(creator_id: UUID, db: AsyncSession = Depends(get_db)):
+    """
+    Get the stored outreach strategy for a creator.
+    Returns the AI-generated strategy from the most recent enrichment.
+    """
+    creator = await db.get(Creator, creator_id)
+    if not creator:
+        raise HTTPException(status_code=404, detail="Creator not found")
+
+    ai = creator.ai_analysis if isinstance(creator.ai_analysis, dict) else {}
+    strategy = ai.get("outreach_strategy")
+
+    if not strategy:
+        return {
+            "creator_id": str(creator_id),
+            "has_strategy": False,
+            "message": "No strategy generated yet. POST /creators/{id}/enrich to generate one.",
+        }
+
+    return {
+        "creator_id": str(creator_id),
+        "creator_name": creator.name,
+        "has_strategy": True,
+        "last_enriched": ai.get("last_enriched"),
+        "strategy": strategy,
+    }
 
 
 @router.post("/creators/{creator_id}/outreach-strategy")

@@ -44,6 +44,50 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+def extract_json(text: str):
+    """
+    Robustly extract a JSON object or array from Claude's response.
+
+    Handles common issues:
+    - Markdown ```json fences
+    - Preamble text before the JSON ("Here's the analysis:\n{...}")
+    - Trailing text after the JSON
+    - Multiple JSON blocks (takes the first valid one)
+    """
+    # Strip markdown fences
+    text = re.sub(r"```json\s*", "", text)
+    text = re.sub(r"```\s*", "", text)
+    text = text.strip()
+
+    # Try direct parse first (happy path)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Use raw_decode: finds valid JSON starting at a given position,
+    # ignoring trailing text. Try every [ or { as a candidate start.
+    decoder = json.JSONDecoder()
+
+    # Collect all candidate start positions, prefer [ before { at same pos
+    # so arrays aren't swallowed as inner objects
+    candidates = []
+    for i, ch in enumerate(text):
+        if ch == "[":
+            candidates.append(i)
+        elif ch == "{":
+            candidates.append(i)
+
+    for pos in candidates:
+        try:
+            result, end_idx = decoder.raw_decode(text, pos)
+            return result
+        except json.JSONDecodeError:
+            continue
+
+    raise json.JSONDecodeError("No valid JSON found in response", text, 0)
+
+
 # ─── INTENT PARSER ───
 
 INTENT_PARSER_PROMPT = """You are a creator discovery assistant for Luma Nutrition, a premium supplement brand.
@@ -99,12 +143,9 @@ async def parse_search_intent(query: str, platforms: list[str]) -> dict:
     )
 
     text = response.content[0].text
-    # Strip any markdown fencing
-    text = re.sub(r"```json\s*", "", text)
-    text = re.sub(r"```\s*", "", text)
 
     try:
-        return json.loads(text)
+        return extract_json(text)
     except json.JSONDecodeError:
         logger.error(f"Failed to parse intent response: {text[:200]}")
         # Fallback: basic parsing
@@ -481,10 +522,8 @@ async def analyze_results(
             )
 
             text = response.content[0].text
-            text = re.sub(r"```json\s*", "", text)
-            text = re.sub(r"```\s*", "", text)
 
-            analyzed = json.loads(text)
+            analyzed = extract_json(text)
             if isinstance(analyzed, list):
                 all_analyzed.extend(analyzed)
             elif isinstance(analyzed, dict):
