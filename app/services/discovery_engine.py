@@ -1,0 +1,762 @@
+"""
+Creator Discovery Engine — AI-Powered Search Orchestrator
+
+This is the brain of the system. It takes a natural language query like
+"find doctors who talk about heart health on TikTok" and:
+
+1. Uses Claude to parse the intent and build a search strategy
+2. Fans out across multiple search sources (web, Reddit, UGC marketplaces)
+3. Deduplicates and enriches raw results
+4. Uses Claude to analyze and score each creator for relevance
+5. Returns ranked, structured creator profiles
+
+Architecture:
+  DiscoveryEngine (orchestrator)
+    ├── IntentParser (Claude) — understands what you're looking for
+    ├── SearchFanout — runs searches in parallel across sources
+    │   ├── WebSearchProvider — general web search for profiles
+    │   ├── RedditSearchProvider — scrapes relevant subreddits
+    │   ├── UGCMarketplaceProvider — searches creator marketplaces
+    │   └── HashtagResearchProvider — platform hashtag analysis
+    ├── ResultDeduplicator — merges results about the same person
+    └── AIAnalyzer (Claude) — scores and enriches each result
+"""
+
+import asyncio
+import json
+import re
+import logging
+from datetime import datetime
+from typing import Optional
+from uuid import UUID
+
+import httpx
+from anthropic import AsyncAnthropic
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+
+from app.core.config import get_settings
+from app.models.models import (
+    DiscoverySearch, DiscoveryResult, Creator, CreatorSource
+)
+
+logger = logging.getLogger(__name__)
+settings = get_settings()
+
+
+# ─── INTENT PARSER ───
+
+INTENT_PARSER_PROMPT = """You are a creator discovery assistant for Luma Nutrition, a premium supplement brand.
+Your job is to parse a natural language search query into a structured search strategy.
+
+Luma's products: Heart Health Bundle, Gut Health Protocol, Longevity Protocol, Sleep/Mood, Blood Sugar, NAD+, Berberine, NAC, Probiotic.
+
+Given the search query, return a JSON object with:
+{
+  "primary_niche": "the main type of creator (e.g. doctor, fitness, mom, gen_z, beauty, comedy, wellness, podcaster, ugc)",
+  "sub_niches": ["more specific niches to search"],
+  "topics": ["specific topics they'd talk about"],
+  "platforms": ["prioritized platforms to search"],
+  "search_queries": ["5-8 specific web search queries to find these creators"],
+  "hashtags": ["relevant platform hashtags to research"],
+  "subreddits": ["relevant subreddits to search"],
+  "ugc_search_terms": ["terms for UGC marketplace search"],
+  "credential_signals": ["things to look for in bios that confirm they're legit"],
+  "follower_range": {"min": null, "max": null},
+  "age_range": {"description": "e.g. 20s, 30s-40s"},
+  "content_fit_signals": ["what would make their content a good fit for Luma products"],
+  "reasoning": "brief explanation of your search strategy"
+}
+
+Be creative and thorough with search queries. Think about:
+- Where these specific types of creators congregate online
+- What hashtags they use
+- What subreddits they'd post in
+- How to find them when they're NOT already on mainstream influencer databases
+- Adjacent niches that overlap
+
+For doctors specifically: look for MD/DO/NP credentials in bios, medical content hashtags,
+health education content, professional networks. They're often on Twitter/X and LinkedIn too.
+
+For Gen Z: focus on TikTok and Instagram Reels, trending hashtags, aesthetic/lifestyle content,
+short-form video creators.
+
+Return ONLY the JSON, no other text."""
+
+
+async def parse_search_intent(query: str, platforms: list[str]) -> dict:
+    """Use Claude to parse a natural language query into a structured search strategy."""
+    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+
+    response = await client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=2000,
+        messages=[{
+            "role": "user",
+            "content": f"Search query: {query}\nPreferred platforms: {', '.join(platforms)}"
+        }],
+        system=INTENT_PARSER_PROMPT,
+    )
+
+    text = response.content[0].text
+    # Strip any markdown fencing
+    text = re.sub(r"```json\s*", "", text)
+    text = re.sub(r"```\s*", "", text)
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        logger.error(f"Failed to parse intent response: {text[:200]}")
+        # Fallback: basic parsing
+        return {
+            "primary_niche": query.split()[0] if query else "creator",
+            "search_queries": [
+                f"{query} TikTok creator",
+                f"{query} Instagram influencer",
+                f"{query} content creator",
+            ],
+            "hashtags": [],
+            "subreddits": ["r/UGCcreators"],
+            "credential_signals": [],
+            "reasoning": "Fallback parsing",
+        }
+
+
+# ─── SEARCH PROVIDERS ───
+
+class WebSearchProvider:
+    """
+    Uses SearchAPI.io (Google Search API) to find creator profiles across platforms.
+    This is the primary discovery mechanism.
+
+    SearchAPI.io: https://www.searchapi.io
+    - Returns Google search results as structured JSON
+    - Auth: Bearer token in Authorization header
+    - Supports google, bing, youtube engines
+    """
+
+    def __init__(self):
+        self.client = httpx.AsyncClient(timeout=30)
+        self.api_key = settings.serper_api_key  # env var name kept for compat
+        self.api_url = "https://www.searchapi.io/api/v1/search"
+
+    async def search(self, queries: list[str], max_results_per_query: int = 10) -> list[dict]:
+        """Run multiple search queries and aggregate results."""
+        all_results = []
+
+        for query in queries:
+            try:
+                results = await self._search_api(query, max_results_per_query)
+                all_results.extend(results)
+            except Exception as e:
+                logger.error(f"SearchAPI search failed for '{query}': {e}")
+
+        return all_results
+
+    async def _search_api(self, query: str, num_results: int) -> list[dict]:
+        """Execute a search via SearchAPI.io."""
+        if not self.api_key:
+            logger.warning("No SearchAPI key configured — skipping web search")
+            return []
+
+        try:
+            response = await self.client.get(
+                self.api_url,
+                params={
+                    "q": query,
+                    "engine": "google",
+                    "num": min(num_results, 100),
+                },
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Accept": "application/json",
+                },
+            )
+
+            if response.status_code != 200:
+                logger.error(f"SearchAPI error {response.status_code}: {response.text[:200]}")
+                return []
+
+            data = response.json()
+            results = []
+
+            # Parse organic results
+            for item in data.get("organic_results", []):
+                results.append({
+                    "url": item.get("link", ""),
+                    "title": item.get("title", ""),
+                    "snippet": item.get("snippet", ""),
+                    "position": item.get("position", 0),
+                    "source": "searchapi",
+                    "query": query,
+                })
+
+            # Knowledge graph
+            kg = data.get("knowledge_graph", {})
+            if kg.get("title"):
+                results.append({
+                    "url": kg.get("website", ""),
+                    "title": kg.get("title", ""),
+                    "snippet": kg.get("description", ""),
+                    "position": 0,
+                    "source": "searchapi_knowledge_graph",
+                    "query": query,
+                    "knowledge_graph": {
+                        "type": kg.get("type", ""),
+                        "attributes": kg.get("attributes", {}),
+                    },
+                })
+
+            # Related questions (People Also Ask)
+            for paa in data.get("related_questions", []):
+                if any(kw in paa.get("question", "").lower() for kw in ["creator", "influencer", "follow", "who"]):
+                    results.append({
+                        "url": paa.get("link", ""),
+                        "title": paa.get("question", ""),
+                        "snippet": paa.get("snippet", ""),
+                        "position": 99,
+                        "source": "searchapi_paa",
+                        "query": query,
+                    })
+
+            logger.info(f"SearchAPI: '{query}' → {len(results)} results")
+            return results
+
+        except Exception as e:
+            logger.error(f"SearchAPI request failed: {e}")
+            return []
+
+    async def search_images(self, query: str, num_results: int = 10) -> list[dict]:
+        """Image search via SearchAPI.io google_images engine."""
+        if not self.api_key:
+            return []
+
+        try:
+            response = await self.client.get(
+                self.api_url,
+                params={
+                    "q": query,
+                    "engine": "google_images",
+                    "num": num_results,
+                },
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Accept": "application/json",
+                },
+            )
+            if response.status_code != 200:
+                return []
+
+            data = response.json()
+            return [
+                {
+                    "url": img.get("link", ""),
+                    "title": img.get("title", ""),
+                    "source": img.get("source", ""),
+                    "image_url": img.get("original", img.get("thumbnail", "")),
+                }
+                for img in data.get("images_results", [])
+            ]
+        except Exception as e:
+            logger.error(f"SearchAPI image search failed: {e}")
+            return []
+
+
+class RedditSearchProvider:
+    """
+    Searches Reddit for creator self-promotion posts and recommendations.
+    Key subreddits for UGC/creator discovery:
+    - r/UGCcreators, r/ugc, r/influencermarketing
+    - Niche subs: r/Supplements, r/fitness, r/SkincareAddiction, etc.
+    """
+
+    def __init__(self):
+        self.client = httpx.AsyncClient(
+            timeout=30,
+            headers={"User-Agent": "CreatorDiscoveryBot/1.0"}
+        )
+        self.base_url = "https://www.reddit.com"
+
+    async def search(self, subreddits: list[str], search_terms: list[str], limit: int = 25) -> list[dict]:
+        """Search across multiple subreddits for creator posts."""
+        all_results = []
+
+        for subreddit in subreddits:
+            for term in search_terms[:3]:  # Limit queries per sub
+                try:
+                    results = await self._search_subreddit(subreddit, term, limit)
+                    all_results.extend(results)
+                except Exception as e:
+                    logger.error(f"Reddit search failed for {subreddit}/{term}: {e}")
+
+        return all_results
+
+    async def _search_subreddit(self, subreddit: str, query: str, limit: int) -> list[dict]:
+        """Search a specific subreddit."""
+        sub = subreddit.replace("r/", "")
+        url = f"{self.base_url}/r/{sub}/search.json"
+
+        try:
+            response = await self.client.get(url, params={
+                "q": query,
+                "restrict_sr": "on",
+                "sort": "relevance",
+                "t": "year",
+                "limit": min(limit, 25),
+            })
+
+            if response.status_code != 200:
+                return []
+
+            data = response.json()
+            posts = data.get("data", {}).get("children", [])
+
+            results = []
+            for post in posts:
+                p = post.get("data", {})
+                results.append({
+                    "source": "reddit",
+                    "subreddit": sub,
+                    "title": p.get("title", ""),
+                    "body": p.get("selftext", "")[:1000],
+                    "url": f"https://reddit.com{p.get('permalink', '')}",
+                    "author": p.get("author", ""),
+                    "score": p.get("score", 0),
+                    "created_utc": p.get("created_utc", 0),
+                })
+
+            return results
+
+        except Exception as e:
+            logger.error(f"Reddit API error: {e}")
+            return []
+
+
+class UGCMarketplaceProvider:
+    """
+    Searches UGC creator marketplaces and directories.
+    Targets: Collabstr, Billo, JoinBrands, Insense, etc.
+    Uses web search to find profiles on these platforms.
+    """
+
+    MARKETPLACES = [
+        {"name": "Collabstr", "domain": "collabstr.com", "search_pattern": "site:collabstr.com {query} creator"},
+        {"name": "Billo", "domain": "billo.app", "search_pattern": "site:billo.app {query}"},
+        {"name": "JoinBrands", "domain": "joinbrands.com", "search_pattern": "site:joinbrands.com {query} creator"},
+        {"name": "Insense", "domain": "insense.pro", "search_pattern": "site:insense.pro {query}"},
+        {"name": "Hashtag Paid", "domain": "hashtagpaid.com", "search_pattern": "site:hashtagpaid.com {query}"},
+    ]
+
+    async def search(self, search_terms: list[str]) -> list[dict]:
+        """Search across UGC marketplaces."""
+        # In production, this would either:
+        # 1. Use web search API with site: operator for each marketplace
+        # 2. Directly scrape marketplace search pages
+        # 3. Use marketplace APIs where available
+
+        results = []
+        for marketplace in self.MARKETPLACES:
+            for term in search_terms[:2]:
+                query = marketplace["search_pattern"].format(query=term)
+                results.append({
+                    "source": "ugc_marketplace",
+                    "marketplace": marketplace["name"],
+                    "search_query": query,
+                    "domain": marketplace["domain"],
+                })
+
+        logger.info(f"UGC marketplace search: {len(results)} queries prepared")
+        return results
+
+
+class HashtagResearchProvider:
+    """
+    Researches relevant hashtags on platforms to find creators.
+    Uses web search to find top creators for specific hashtags.
+    """
+
+    async def search(self, hashtags: list[str], platforms: list[str]) -> list[dict]:
+        """Find creators through hashtag research."""
+        results = []
+
+        for platform in platforms:
+            for hashtag in hashtags[:5]:
+                tag = hashtag.replace("#", "")
+                # Build search queries to find top creators for each hashtag
+                queries = [
+                    f"top {platform} creators #{tag}",
+                    f"{platform} influencers {tag} 2025 2026",
+                    f"best {tag} content creators {platform}",
+                ]
+                for q in queries:
+                    results.append({
+                        "source": "hashtag_research",
+                        "platform": platform,
+                        "hashtag": tag,
+                        "search_query": q,
+                    })
+
+        logger.info(f"Hashtag research: {len(results)} queries prepared")
+        return results
+
+
+# ─── AI ANALYZER ───
+
+ANALYZER_PROMPT = """You are analyzing potential creator/influencer profiles for Luma Nutrition.
+Luma sells premium supplements: Heart Health Bundle, Gut Health Protocol, Longevity Protocol.
+
+For each raw search result, extract and analyze:
+
+1. **Creator identity**: name, handle, platform
+2. **Credentials**: Are they a doctor/medical professional? What credentials do they claim?
+3. **Content fit**: How well does their content align with Luma's health/wellness products?
+4. **Audience quality**: Based on available signals, how valuable is their audience?
+5. **Engagement signals**: Any indicators of real engagement vs fake followers?
+6. **Contact info**: Email, website, or other contact methods visible
+
+Return a JSON array of analyzed profiles:
+[
+  {
+    "name": "...",
+    "handle": "@...",
+    "platform": "tiktok|instagram|youtube|twitter|reddit|linkedin",
+    "profile_url": "...",
+    "bio": "...",
+    "email": "...",
+    "estimated_followers": null,
+    "estimated_engagement_rate": null,
+    "categories": ["Doctor", "Heart Health", ...],
+    "credentials": ["MD", "Board Certified", ...],
+    "relevance_score": 0-100,
+    "content_fit_reasoning": "Why they're a good/bad fit for Luma",
+    "red_flags": ["any concerns"],
+    "recommended_action": "save|investigate|skip",
+    "source_urls": ["where this info came from"]
+  }
+]
+
+Score relevance 0-100 based on:
+- 90-100: Perfect fit (right niche, right platform, right audience, verified credentials)
+- 70-89: Strong fit (good niche match, decent audience, worth pursuing)
+- 50-69: Possible fit (adjacent niche, might work with right angle)
+- Below 50: Weak fit (wrong niche, wrong audience, or red flags)
+
+Be thorough but honest. Don't inflate scores. If something looks fake or bot-driven, flag it.
+Return ONLY the JSON array, no other text."""
+
+
+async def analyze_results(
+    raw_results: list[dict],
+    search_intent: dict,
+    original_query: str
+) -> list[dict]:
+    """Use Claude to analyze and score raw search results."""
+    if not raw_results:
+        return []
+
+    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+
+    # Batch results into chunks for analysis (avoid token limits)
+    chunk_size = 10
+    all_analyzed = []
+
+    for i in range(0, len(raw_results), chunk_size):
+        chunk = raw_results[i:i + chunk_size]
+
+        context = json.dumps({
+            "original_query": original_query,
+            "search_intent": search_intent,
+            "raw_results": chunk,
+        }, indent=2, default=str)
+
+        try:
+            response = await client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=4000,
+                messages=[{
+                    "role": "user",
+                    "content": f"Analyze these search results:\n\n{context}"
+                }],
+                system=ANALYZER_PROMPT,
+            )
+
+            text = response.content[0].text
+            text = re.sub(r"```json\s*", "", text)
+            text = re.sub(r"```\s*", "", text)
+
+            analyzed = json.loads(text)
+            if isinstance(analyzed, list):
+                all_analyzed.extend(analyzed)
+            elif isinstance(analyzed, dict):
+                all_analyzed.append(analyzed)
+
+        except Exception as e:
+            logger.error(f"AI analysis failed for chunk {i}: {e}")
+
+    return all_analyzed
+
+
+# ─── DEDUPLICATION ───
+
+def deduplicate_results(results: list[dict]) -> list[dict]:
+    """
+    Merge results that refer to the same creator.
+    Deduplicates by handle, email, or profile URL similarity.
+    """
+    seen = {}
+    deduplicated = []
+
+    for result in results:
+        # Build dedup keys
+        keys = []
+        if result.get("handle"):
+            keys.append(result["handle"].lower().strip("@"))
+        if result.get("email"):
+            keys.append(result["email"].lower())
+        if result.get("profile_url"):
+            # Extract handle from URL
+            url = result["profile_url"].lower()
+            for pattern in [r"/@([^/?\s]+)", r"/([^/?\s]+)/?$"]:
+                m = re.search(pattern, url)
+                if m:
+                    keys.append(m.group(1))
+                    break
+
+        # Check for existing match
+        matched_key = None
+        for key in keys:
+            if key in seen:
+                matched_key = key
+                break
+
+        if matched_key:
+            # Merge into existing result
+            existing = seen[matched_key]
+            # Keep higher relevance score
+            if (result.get("relevance_score") or 0) > (existing.get("relevance_score") or 0):
+                existing["relevance_score"] = result["relevance_score"]
+            # Merge categories
+            existing_cats = set(existing.get("categories", []))
+            existing_cats.update(result.get("categories", []))
+            existing["categories"] = list(existing_cats)
+            # Add source URLs
+            existing.setdefault("source_urls", [])
+            existing["source_urls"].extend(result.get("source_urls", []))
+        else:
+            # New result
+            for key in keys:
+                seen[key] = result
+            deduplicated.append(result)
+
+    return deduplicated
+
+
+# ─── MAIN DISCOVERY ENGINE ───
+
+class DiscoveryEngine:
+    """
+    Main orchestrator. Takes a search query, runs the full discovery pipeline.
+    """
+
+    def __init__(self):
+        self.web_search = WebSearchProvider()
+        self.reddit_search = RedditSearchProvider()
+        self.ugc_search = UGCMarketplaceProvider()
+        self.hashtag_search = HashtagResearchProvider()
+
+    async def discover(
+        self,
+        query: str,
+        platforms: list[str],
+        filters: dict,
+        db: AsyncSession,
+        max_results: int = 20,
+    ) -> DiscoverySearch:
+        """
+        Run a full discovery search.
+
+        1. Parse intent with AI
+        2. Fan out searches across providers
+        3. Aggregate and deduplicate
+        4. Analyze and score with AI
+        5. Store results in database
+        """
+
+        # Create search record
+        search = DiscoverySearch(
+            query=query,
+            platforms_searched=platforms,
+            filters=filters,
+            status="parsing_intent",
+        )
+        db.add(search)
+        await db.flush()
+
+        try:
+            # Step 1: Parse intent
+            logger.info(f"[Discovery] Parsing intent: {query}")
+            intent = await parse_search_intent(query, platforms)
+            search.parsed_intent = intent
+            search.status = "searching"
+            await db.flush()
+
+            # Step 2: Fan out searches in parallel
+            logger.info(f"[Discovery] Running parallel searches...")
+            search_tasks = []
+
+            # Web search (primary)
+            web_queries = intent.get("search_queries", [])
+            if web_queries:
+                search_tasks.append(self.web_search.search(web_queries))
+
+            # Reddit search
+            subreddits = intent.get("subreddits", [])
+            if subreddits:
+                reddit_terms = intent.get("topics", [query])
+                search_tasks.append(self.reddit_search.search(subreddits, reddit_terms))
+
+            # UGC marketplace search
+            ugc_terms = intent.get("ugc_search_terms", [])
+            if ugc_terms:
+                search_tasks.append(self.ugc_search.search(ugc_terms))
+
+            # Hashtag research
+            hashtags = intent.get("hashtags", [])
+            if hashtags:
+                search_tasks.append(self.hashtag_search.search(hashtags, platforms))
+
+            # Run all searches in parallel
+            raw_results_groups = await asyncio.gather(*search_tasks, return_exceptions=True)
+
+            # Flatten results
+            raw_results = []
+            for group in raw_results_groups:
+                if isinstance(group, list):
+                    raw_results.extend(group)
+                elif isinstance(group, Exception):
+                    logger.error(f"Search task failed: {group}")
+
+            logger.info(f"[Discovery] Got {len(raw_results)} raw results")
+            search.status = "analyzing"
+            await db.flush()
+
+            # Step 3: AI Analysis
+            analyzed = await analyze_results(raw_results, intent, query)
+            logger.info(f"[Discovery] AI analyzed {len(analyzed)} results")
+
+            # Step 4: Deduplicate
+            unique = deduplicate_results(analyzed)
+            logger.info(f"[Discovery] {len(unique)} unique creators after dedup")
+
+            # Step 5: Sort by relevance and limit
+            unique.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
+            final = unique[:max_results]
+
+            # Step 6: Store results
+            for result_data in final:
+                result = DiscoveryResult(
+                    search_id=search.id,
+                    name=result_data.get("name", "Unknown"),
+                    handle=result_data.get("handle"),
+                    platform=result_data.get("platform", "unknown"),
+                    profile_url=result_data.get("profile_url"),
+                    bio=result_data.get("bio"),
+                    email=result_data.get("email"),
+                    followers=result_data.get("estimated_followers"),
+                    engagement_rate=result_data.get("estimated_engagement_rate"),
+                    relevance_score=result_data.get("relevance_score"),
+                    categories=result_data.get("categories", []),
+                    ai_analysis={
+                        "credentials": result_data.get("credentials", []),
+                        "content_fit": result_data.get("content_fit_reasoning"),
+                        "red_flags": result_data.get("red_flags", []),
+                        "recommended_action": result_data.get("recommended_action"),
+                    },
+                    source_type=result_data.get("source", "web_search"),
+                    source_url=result_data.get("source_urls", [None])[0] if result_data.get("source_urls") else None,
+                    raw_data=result_data,
+                )
+                db.add(result)
+
+            # Update search record
+            search.results_count = len(final)
+            search.status = "complete"
+            search.completed_at = datetime.utcnow()
+            await db.commit()
+
+            # Reload with results
+            await db.refresh(search)
+            return search
+
+        except Exception as e:
+            logger.error(f"[Discovery] Search failed: {e}")
+            search.status = "failed"
+            search.error = str(e)
+            await db.commit()
+            raise
+
+    async def save_result_as_creator(
+        self,
+        result_id: UUID,
+        db: AsyncSession,
+    ) -> Creator:
+        """Save a discovery result as a creator in the database."""
+        result = await db.get(DiscoveryResult, result_id)
+        if not result:
+            raise ValueError(f"Discovery result {result_id} not found")
+
+        # Check for existing creator with same email
+        if result.email:
+            existing = await db.execute(
+                select(Creator).where(Creator.email == result.email)
+            )
+            if existing.scalar_one_or_none():
+                raise ValueError(f"Creator with email {result.email} already exists")
+
+        # Create creator from result
+        creator = Creator(
+            name=result.name,
+            email=result.email,
+            bio=result.bio,
+            categories=result.categories or [],
+            relevance_score=result.relevance_score,
+            engagement_rate=result.engagement_rate,
+            total_followers=result.followers,
+            ai_analysis=result.ai_analysis,
+            source=CreatorSource.AI_DISCOVERY,
+            source_details={
+                "search_id": str(result.search_id),
+                "platform": result.platform,
+                "source_type": result.source_type,
+            },
+            pipeline_stage="discovered",
+        )
+
+        # Map platform-specific fields
+        platform = result.platform
+        if platform == "tiktok":
+            creator.tiktok_url = result.profile_url
+            creator.tiktok_handle = result.handle
+            creator.tiktok_followers = result.followers
+        elif platform == "instagram":
+            creator.instagram_url = result.profile_url
+            creator.instagram_handle = result.handle
+            creator.instagram_followers = result.followers
+        elif platform == "youtube":
+            creator.youtube_url = result.profile_url
+            creator.youtube_handle = result.handle
+            creator.youtube_subscribers = result.followers
+        elif platform == "twitter":
+            creator.twitter_url = result.profile_url
+            creator.twitter_handle = result.handle
+            creator.twitter_followers = result.followers
+
+        db.add(creator)
+
+        # Link result to creator
+        result.creator_id = creator.id
+        result.saved_at = datetime.utcnow()
+
+        await db.commit()
+        await db.refresh(creator)
+        return creator
