@@ -352,6 +352,8 @@ async def discover_creators(
                             "content_fit": rd.get("content_fit_reasoning"),
                             "red_flags": rd.get("red_flags", []),
                             "recommended_action": rd.get("recommended_action"),
+                            "other_profiles": rd.get("other_profiles", {}),
+                            "past_partnerships": rd.get("past_partnerships", []),
                         },
                         source_type=rd.get("source", "web_search"),
                         source_url=rd.get("source_urls", [None])[0] if rd.get("source_urls") else None,
@@ -384,6 +386,32 @@ async def discover_creators(
         "status": "starting",
         "message": "Search started. Poll GET /discover/{search_id} for results.",
     }
+
+
+@router.get("/discover/history")
+async def discovery_history(
+    limit: int = 20,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get recent discovery search history."""
+    result = await db.execute(
+        select(DiscoverySearch)
+        .order_by(desc(DiscoverySearch.started_at))
+        .limit(limit)
+    )
+    searches = result.scalars().all()
+    return [
+        {
+            "id": str(s.id),
+            "query": s.query,
+            "status": s.status,
+            "results_count": s.results_count,
+            "results_saved": s.results_saved,
+            "started_at": s.started_at.isoformat(),
+            "completed_at": s.completed_at.isoformat() if s.completed_at else None,
+        }
+        for s in searches
+    ]
 
 
 @router.get("/discover/{search_id}")
@@ -447,32 +475,6 @@ async def save_and_enrich_discovery_result(result_id: UUID, db: AsyncSession = D
         "enrichment_status": "started",
         "message": "Creator saved. Enrichment running — poll /creators/{id}/enrich/status for progress.",
     }
-
-
-@router.get("/discover/history")
-async def discovery_history(
-    limit: int = 20,
-    db: AsyncSession = Depends(get_db),
-):
-    """Get recent discovery search history."""
-    result = await db.execute(
-        select(DiscoverySearch)
-        .order_by(desc(DiscoverySearch.started_at))
-        .limit(limit)
-    )
-    searches = result.scalars().all()
-    return [
-        {
-            "id": str(s.id),
-            "query": s.query,
-            "status": s.status,
-            "results_count": s.results_count,
-            "results_saved": s.results_saved,
-            "started_at": s.started_at.isoformat(),
-            "completed_at": s.completed_at.isoformat() if s.completed_at else None,
-        }
-        for s in searches
-    ]
 
 
 # ─── OUTREACH ───

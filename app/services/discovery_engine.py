@@ -101,29 +101,49 @@ Given the search query, return a JSON object with:
   "sub_niches": ["more specific niches to search"],
   "topics": ["specific topics they'd talk about"],
   "platforms": ["prioritized platforms to search"],
-  "search_queries": ["5-8 specific web search queries to find these creators"],
+  "search_queries": ["10-15 specific web search queries - see strategy notes below"],
   "hashtags": ["relevant platform hashtags to research"],
   "subreddits": ["relevant subreddits to search"],
   "ugc_search_terms": ["terms for UGC marketplace search"],
   "credential_signals": ["things to look for in bios that confirm they're legit"],
   "follower_range": {"min": null, "max": null},
-  "age_range": {"description": "e.g. 20s, 30s-40s"},
   "content_fit_signals": ["what would make their content a good fit for Luma products"],
   "reasoning": "brief explanation of your search strategy"
 }
 
-Be creative and thorough with search queries. Think about:
-- Where these specific types of creators congregate online
-- What hashtags they use
-- What subreddits they'd post in
-- How to find them when they're NOT already on mainstream influencer databases
-- Adjacent niches that overlap
+CRITICAL — SEARCH QUERY STRATEGY:
+Generate 10-15 diverse, specific search queries that cast a wide net. Include:
 
-For doctors specifically: look for MD/DO/NP credentials in bios, medical content hashtags,
-health education content, professional networks. They're often on Twitter/X and LinkedIn too.
+1. PROFILE DISCOVERY (find their actual profiles):
+   - "heart health doctor tiktok creator @"
+   - "cardiologist instagram influencer health tips"
+   - site:tiktok.com "heart health" doctor
+   - site:instagram.com "MD" OR "DO" heart health nutrition
 
-For Gen Z: focus on TikTok and Instagram Reels, trending hashtags, aesthetic/lifestyle content,
-short-form video creators.
+2. LIST/ROUNDUP ARTICLES (bloggers who already compiled lists):
+   - "top 10 heart health doctors on tiktok 2025"
+   - "best cardiology influencers to follow"
+   - "health doctors on social media list"
+
+3. CREATOR DIRECTORIES & PLATFORMS:
+   - site:collabstr.com health doctor creator
+   - site:linkedin.com "cardiologist" "content creator" OR "influencer"
+   - "health creator" email collaboration contact
+
+4. REDDIT & COMMUNITY DISCOVERY:
+   - site:reddit.com "who are good" heart health doctors tiktok
+   - site:reddit.com recommend health influencer supplements
+
+5. EMAIL/CONTACT EXTRACTION (find creators with visible contact info):
+   - "heart health" creator "business inquiries" email
+   - "heart health" influencer "collab" OR "partnership" contact
+
+6. ADJACENT/UNEXPECTED SOURCES:
+   - "heart health" podcast host guest expert
+   - "cardiology" youtube "subscribe" health tips
+   - "heart health" newsletter author substack
+
+The goal is to find SPECIFIC PEOPLE with their handles, emails, and profile links — not generic articles about heart health. Every query should be designed to surface actual creator profiles or lists of creators.
 
 Return ONLY the JSON, no other text."""
 
@@ -375,114 +395,112 @@ class RedditSearchProvider:
 
 class UGCMarketplaceProvider:
     """
-    Searches UGC creator marketplaces and directories.
+    Searches UGC creator marketplaces and directories via web search.
     Targets: Collabstr, Billo, JoinBrands, Insense, etc.
-    Uses web search to find profiles on these platforms.
     """
 
+    def __init__(self):
+        self.web = WebSearchProvider()
+
     MARKETPLACES = [
-        {"name": "Collabstr", "domain": "collabstr.com", "search_pattern": "site:collabstr.com {query} creator"},
-        {"name": "Billo", "domain": "billo.app", "search_pattern": "site:billo.app {query}"},
-        {"name": "JoinBrands", "domain": "joinbrands.com", "search_pattern": "site:joinbrands.com {query} creator"},
-        {"name": "Insense", "domain": "insense.pro", "search_pattern": "site:insense.pro {query}"},
-        {"name": "Hashtag Paid", "domain": "hashtagpaid.com", "search_pattern": "site:hashtagpaid.com {query}"},
+        {"name": "Collabstr", "domain": "collabstr.com"},
+        {"name": "Billo", "domain": "billo.app"},
+        {"name": "JoinBrands", "domain": "joinbrands.com"},
+        {"name": "Insense", "domain": "insense.pro"},
+        {"name": "Hashtag Paid", "domain": "hashtagpaid.com"},
     ]
 
     async def search(self, search_terms: list[str]) -> list[dict]:
-        """Search across UGC marketplaces."""
-        # In production, this would either:
-        # 1. Use web search API with site: operator for each marketplace
-        # 2. Directly scrape marketplace search pages
-        # 3. Use marketplace APIs where available
-
-        results = []
-        for marketplace in self.MARKETPLACES:
+        """Search across UGC marketplaces using real web search."""
+        queries = []
+        for marketplace in self.MARKETPLACES[:3]:  # top 3 to save API credits
             for term in search_terms[:2]:
-                query = marketplace["search_pattern"].format(query=term)
-                results.append({
-                    "source": "ugc_marketplace",
-                    "marketplace": marketplace["name"],
-                    "search_query": query,
-                    "domain": marketplace["domain"],
-                })
+                queries.append(f"site:{marketplace['domain']} {term} creator")
 
-        logger.info(f"UGC marketplace search: {len(results)} queries prepared")
-        return results
+        if not queries:
+            return []
+
+        return await self.web.search(queries, max_results_per_query=5)
 
 
 class HashtagResearchProvider:
     """
-    Researches relevant hashtags on platforms to find creators.
-    Uses web search to find top creators for specific hashtags.
+    Researches relevant hashtags on platforms to find creators via web search.
     """
 
+    def __init__(self):
+        self.web = WebSearchProvider()
+
     async def search(self, hashtags: list[str], platforms: list[str]) -> list[dict]:
-        """Find creators through hashtag research."""
-        results = []
-
-        for platform in platforms:
-            for hashtag in hashtags[:5]:
+        """Find creators through hashtag research using real web search."""
+        queries = []
+        for platform in platforms[:3]:
+            for hashtag in hashtags[:3]:
                 tag = hashtag.replace("#", "")
-                # Build search queries to find top creators for each hashtag
-                queries = [
-                    f"top {platform} creators #{tag}",
-                    f"{platform} influencers {tag} 2025 2026",
-                    f"best {tag} content creators {platform}",
-                ]
-                for q in queries:
-                    results.append({
-                        "source": "hashtag_research",
-                        "platform": platform,
-                        "hashtag": tag,
-                        "search_query": q,
-                    })
+                queries.append(f"top {platform} creators #{tag} 2025 2026 influencer")
 
-        logger.info(f"Hashtag research: {len(results)} queries prepared")
-        return results
+        if not queries:
+            return []
+
+        return await self.web.search(queries, max_results_per_query=5)
 
 
 # ─── AI ANALYZER ───
 
-ANALYZER_PROMPT = """You are analyzing potential creator/influencer profiles for Luma Nutrition.
+ANALYZER_PROMPT = """You are analyzing raw web search results to extract individual creator/influencer profiles for Luma Nutrition.
 Luma sells premium supplements: Heart Health Bundle, Gut Health Protocol, Longevity Protocol.
 
-For each raw search result, extract and analyze:
+YOUR CORE JOB: Extract INDIVIDUAL PEOPLE from these search results. Each result might mention 1 person, or a list article might mention 10. Extract every identifiable creator.
 
-1. **Creator identity**: name, handle, platform
-2. **Credentials**: Are they a doctor/medical professional? What credentials do they claim?
-3. **Content fit**: How well does their content align with Luma's health/wellness products?
-4. **Audience quality**: Based on available signals, how valuable is their audience?
-5. **Engagement signals**: Any indicators of real engagement vs fake followers?
-6. **Contact info**: Email, website, or other contact methods visible
+For each person you identify, extract AS MUCH as possible:
+
+1. **Identity**: Full name, social handle(s), platform(s)
+2. **Profile URLs**: Actual links to their TikTok, Instagram, YouTube, Twitter, LinkedIn profiles
+3. **Contact**: Email addresses, business inquiry links, linktree/bio links, management/agency
+4. **Credentials**: MD, DO, NP, RD, PhD, certified trainer, etc.
+5. **Content focus**: What topics they create about
+6. **Audience signals**: Follower counts, subscriber counts (extract numbers from text like "500K followers")
+7. **Brand partnerships**: Any brands mentioned they work with
+
+IMPORTANT:
+- Look at URLs in search results — extract handles from profile URLs (e.g. tiktok.com/@drheartdoc → handle is @drheartdoc)
+- Look for emails in snippets (name@gmail.com, business@domain.com)
+- If a list article mentions "top 10 doctors", create 10 separate entries
+- Extract follower counts from text like "500K followers" → 500000
+- If you see "collab" "partnership" "sponsored by" — note the brand in past partnerships
+- ALWAYS include source_urls so we can trace where you found each person
 
 Return a JSON array of analyzed profiles:
 [
   {
-    "name": "...",
-    "handle": "@...",
-    "platform": "tiktok|instagram|youtube|twitter|reddit|linkedin",
-    "profile_url": "...",
-    "bio": "...",
-    "email": "...",
-    "estimated_followers": null,
+    "name": "Dr. Jane Smith",
+    "handle": "@drjanesmith",
+    "platform": "tiktok",
+    "profile_url": "https://tiktok.com/@drjanesmith",
+    "other_profiles": {"instagram": "@drjanesmith", "youtube": "DrJaneSmith"},
+    "bio": "Cardiologist sharing heart health tips...",
+    "email": "jane@drjanesmith.com",
+    "estimated_followers": 250000,
     "estimated_engagement_rate": null,
-    "categories": ["Doctor", "Heart Health", ...],
-    "credentials": ["MD", "Board Certified", ...],
+    "categories": ["Doctor", "Cardiologist", "Heart Health"],
+    "credentials": ["MD", "Board Certified Cardiologist"],
+    "past_partnerships": ["Brand X", "Brand Y"],
     "relevance_score": 0-100,
     "content_fit_reasoning": "Why they're a good/bad fit for Luma",
     "red_flags": ["any concerns"],
     "recommended_action": "save|investigate|skip",
-    "source_urls": ["where this info came from"]
+    "source_urls": ["url where this info was found"]
   }
 ]
 
-Score relevance 0-100 based on:
-- 90-100: Perfect fit (right niche, right platform, right audience, verified credentials)
-- 70-89: Strong fit (good niche match, decent audience, worth pursuing)
-- 50-69: Possible fit (adjacent niche, might work with right angle)
-- Below 50: Weak fit (wrong niche, wrong audience, or red flags)
+Score relevance 0-100:
+- 90-100: Perfect fit (right niche, credentials verified, good audience, contactable)
+- 70-89: Strong fit (good match, worth pursuing)
+- 50-69: Possible fit (adjacent niche, needs more research)
+- Below 50: Weak fit or not enough info
 
-Be thorough but honest. Don't inflate scores. If something looks fake or bot-driven, flag it.
+Be AGGRESSIVE about extraction. If you can see a handle, profile URL, or email anywhere in the data — grab it. The more contact info and social links you extract, the more useful this is.
+
 Return ONLY the JSON array, no other text."""
 
 
