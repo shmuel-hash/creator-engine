@@ -187,19 +187,23 @@ async def parse_search_intent(query: str, platforms: list[str]) -> dict:
 
 class WebSearchProvider:
     """
-    Uses SearchAPI.io (Google Search API) to find creator profiles across platforms.
-    This is the primary discovery mechanism.
+    Web search provider — supports Serper.dev (preferred) and SearchAPI.io (fallback).
+
+    Serper.dev: https://serper.dev
+    - POST https://google.serper.dev/search
+    - Auth: X-API-KEY header
+    - 2,500 free searches/month
 
     SearchAPI.io: https://www.searchapi.io
-    - Returns Google search results as structured JSON
-    - Auth: Bearer token in Authorization header
-    - Supports google, bing, youtube engines
+    - GET https://www.searchapi.io/api/v1/search
+    - Auth: Bearer token
     """
 
     def __init__(self):
         self.client = httpx.AsyncClient(timeout=30)
         self.api_key = settings.serper_api_key  # env var name kept for compat
-        self.api_url = "https://www.searchapi.io/api/v1/search"
+        # Auto-detect provider: Serper keys are shorter and don't start with V
+        self._use_serper = bool(self.api_key and not self.api_key.startswith("V"))
 
     async def search(self, queries: list[str], max_results_per_query: int = 10) -> list[dict]:
         """Run multiple search queries and aggregate results."""
@@ -207,22 +211,92 @@ class WebSearchProvider:
 
         for query in queries:
             try:
-                results = await self._search_api(query, max_results_per_query)
+                if self._use_serper:
+                    results = await self._serper_search(query, max_results_per_query)
+                else:
+                    results = await self._searchapi_search(query, max_results_per_query)
                 all_results.extend(results)
             except Exception as e:
-                logger.error(f"SearchAPI search failed for '{query}': {e}")
+                logger.error(f"Web search failed for '{query}': {e}")
 
         return all_results
 
-    async def _search_api(self, query: str, num_results: int) -> list[dict]:
-        """Execute a search via SearchAPI.io."""
+    async def _serper_search(self, query: str, num_results: int) -> list[dict]:
+        """Execute a search via Serper.dev (Google SERP API)."""
         if not self.api_key:
-            logger.warning("No SearchAPI key configured — skipping web search")
+            logger.warning("No Serper API key configured — skipping web search")
+            return []
+
+        try:
+            response = await self.client.post(
+                "https://google.serper.dev/search",
+                json={
+                    "q": query,
+                    "num": min(num_results, 100),
+                },
+                headers={
+                    "X-API-KEY": self.api_key,
+                    "Content-Type": "application/json",
+                },
+            )
+
+            if response.status_code != 200:
+                logger.error(f"Serper error {response.status_code}: {response.text[:200]}")
+                return []
+
+            data = response.json()
+            results = []
+
+            # Parse organic results
+            for item in data.get("organic", []):
+                results.append({
+                    "url": item.get("link", ""),
+                    "title": item.get("title", ""),
+                    "snippet": item.get("snippet", ""),
+                    "position": item.get("position", 0),
+                    "source": "serper",
+                    "query": query,
+                })
+
+            # Knowledge graph
+            kg = data.get("knowledgeGraph", {})
+            if kg.get("title"):
+                results.append({
+                    "url": kg.get("website", ""),
+                    "title": kg.get("title", ""),
+                    "snippet": kg.get("description", ""),
+                    "position": 0,
+                    "source": "serper_knowledge_graph",
+                    "query": query,
+                })
+
+            # People also ask — can surface creator names
+            for paa in data.get("peopleAlsoAsk", [])[:3]:
+                if paa.get("snippet"):
+                    results.append({
+                        "url": paa.get("link", ""),
+                        "title": paa.get("question", ""),
+                        "snippet": paa.get("snippet", ""),
+                        "position": 99,
+                        "source": "serper_paa",
+                        "query": query,
+                    })
+
+            logger.info(f"Serper: '{query}' → {len(results)} results")
+            return results
+
+        except Exception as e:
+            logger.error(f"Serper request failed: {e}")
+            return []
+
+    async def _searchapi_search(self, query: str, num_results: int) -> list[dict]:
+        """Execute a search via SearchAPI.io (legacy fallback)."""
+        if not self.api_key:
             return []
 
         try:
             response = await self.client.get(
-                self.api_url,
+                "https://www.searchapi.io/api/v1/search",
                 params={
                     "q": query,
                     "engine": "google",
@@ -241,7 +315,6 @@ class WebSearchProvider:
             data = response.json()
             results = []
 
-            # Parse organic results
             for item in data.get("organic_results", []):
                 results.append({
                     "url": item.get("link", ""),
@@ -252,7 +325,6 @@ class WebSearchProvider:
                     "query": query,
                 })
 
-            # Knowledge graph
             kg = data.get("knowledge_graph", {})
             if kg.get("title"):
                 results.append({
@@ -262,23 +334,7 @@ class WebSearchProvider:
                     "position": 0,
                     "source": "searchapi_knowledge_graph",
                     "query": query,
-                    "knowledge_graph": {
-                        "type": kg.get("type", ""),
-                        "attributes": kg.get("attributes", {}),
-                    },
                 })
-
-            # Related questions (People Also Ask)
-            for paa in data.get("related_questions", []):
-                if any(kw in paa.get("question", "").lower() for kw in ["creator", "influencer", "follow", "who"]):
-                    results.append({
-                        "url": paa.get("link", ""),
-                        "title": paa.get("question", ""),
-                        "snippet": paa.get("snippet", ""),
-                        "position": 99,
-                        "source": "searchapi_paa",
-                        "query": query,
-                    })
 
             logger.info(f"SearchAPI: '{query}' → {len(results)} results")
             return results
@@ -286,42 +342,6 @@ class WebSearchProvider:
         except Exception as e:
             logger.error(f"SearchAPI request failed: {e}")
             return []
-
-    async def search_images(self, query: str, num_results: int = 10) -> list[dict]:
-        """Image search via SearchAPI.io google_images engine."""
-        if not self.api_key:
-            return []
-
-        try:
-            response = await self.client.get(
-                self.api_url,
-                params={
-                    "q": query,
-                    "engine": "google_images",
-                    "num": num_results,
-                },
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Accept": "application/json",
-                },
-            )
-            if response.status_code != 200:
-                return []
-
-            data = response.json()
-            return [
-                {
-                    "url": img.get("link", ""),
-                    "title": img.get("title", ""),
-                    "source": img.get("source", ""),
-                    "image_url": img.get("original", img.get("thumbnail", "")),
-                }
-                for img in data.get("images_results", [])
-            ]
-        except Exception as e:
-            logger.error(f"SearchAPI image search failed: {e}")
-            return []
-
 
 class RedditSearchProvider:
     """

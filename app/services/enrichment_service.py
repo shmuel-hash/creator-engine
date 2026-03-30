@@ -134,20 +134,32 @@ async def find_creator_email(
             f"{clean_handle} {platform} creator contact email collaboration",
         ]
 
+        api_key = settings.serper_api_key
+        use_serper = bool(api_key and not api_key.startswith("V"))
+
         async with httpx.AsyncClient(timeout=15) as client:
             for query in search_queries[:1]:  # limit to 1 search to save credits
                 try:
-                    response = await client.get(
-                        "https://www.searchapi.io/api/v1/search",
-                        params={"q": query, "engine": "google", "num": 5},
-                        headers={
-                            "Authorization": f"Bearer {settings.serper_api_key}",
-                            "Accept": "application/json",
-                        },
-                    )
+                    if use_serper:
+                        response = await client.post(
+                            "https://google.serper.dev/search",
+                            json={"q": query, "num": 5},
+                            headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
+                        )
+                        results_key = "organic"
+                        link_key = "link"
+                    else:
+                        response = await client.get(
+                            "https://www.searchapi.io/api/v1/search",
+                            params={"q": query, "engine": "google", "num": 5},
+                            headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
+                        )
+                        results_key = "organic_results"
+                        link_key = "link"
+
                     if response.status_code == 200:
                         data = response.json()
-                        for result in data.get("organic_results", []):
+                        for result in data.get(results_key, []):
                             snippet = result.get("snippet", "")
                             snippet_emails = re.findall(r"[\w.+-]+@[\w-]+\.[\w.]+", snippet)
                             for e in snippet_emails:
@@ -157,11 +169,11 @@ async def find_creator_email(
 
                             # Also try scraping the result page for email
                             if not found_emails:
-                                page_emails = await extract_email_from_url(result.get("link", ""))
+                                page_emails = await extract_email_from_url(result.get(link_key, ""))
                                 for e in page_emails[:2]:
                                     if e not in found_emails:
                                         found_emails.append(e)
-                                        sources.append(f"web_page:{result.get('link', '')[:50]}")
+                                        sources.append(f"web_page:{result.get(link_key, '')[:50]}")
 
                 except Exception as e:
                     logger.debug(f"Email search failed: {e}")
@@ -198,19 +210,29 @@ async def analyze_creator_content(
     ]
 
     async with httpx.AsyncClient(timeout=15) as client:
+        api_key = settings.serper_api_key
+        use_serper = bool(api_key and not api_key.startswith("V"))
+
         for query in search_queries:
             try:
-                response = await client.get(
-                    "https://www.searchapi.io/api/v1/search",
-                    params={"q": query, "engine": "google", "num": 10},
-                    headers={
-                        "Authorization": f"Bearer {settings.serper_api_key}",
-                        "Accept": "application/json",
-                    },
-                )
+                if use_serper:
+                    response = await client.post(
+                        "https://google.serper.dev/search",
+                        json={"q": query, "num": 10},
+                        headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
+                    )
+                    results_key = "organic"
+                else:
+                    response = await client.get(
+                        "https://www.searchapi.io/api/v1/search",
+                        params={"q": query, "engine": "google", "num": 10},
+                        headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
+                    )
+                    results_key = "organic_results"
+
                 if response.status_code == 200:
                     data = response.json()
-                    for r in data.get("organic_results", []):
+                    for r in data.get(results_key, []):
                         results_data.append({
                             "title": r.get("title", ""),
                             "url": r.get("link", ""),
