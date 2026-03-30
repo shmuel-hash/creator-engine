@@ -269,114 +269,123 @@ async def discover_creators(
     await db.refresh(search)
     search_id = search.id
 
+    # Capture request values before the endpoint returns (request obj may be GC'd)
+    query_text = str(request.query)
+    platforms_list = list(request.platforms)
+    max_results_val = int(request.max_results)
+
     # Run discovery in background
     async def _run_discovery():
         from app.core.database import async_session_factory
-        async with async_session_factory() as session:
-            try:
-                eng = DiscoveryEngine()
-                # Load the search record in this session
-                s = await session.get(DiscoverySearch, search_id)
-                if not s:
-                    return
-
-                s.status = "parsing_intent"
-                await session.flush()
-
-                # Step 1: Parse intent
-                logger.info(f"[Discovery] Parsing intent: {request.query}")
-                intent = await parse_search_intent(request.query, request.platforms)
-                s.parsed_intent = intent
-                s.status = "searching"
-                await session.flush()
-
-                # Step 2: Fan out searches
-                logger.info(f"[Discovery] Running searches...")
-                search_tasks = []
-
-                web_queries = intent.get("search_queries", [])
-                if web_queries:
-                    search_tasks.append(eng.web_search.search(web_queries))
-
-                subreddits = intent.get("subreddits", [])
-                if subreddits:
-                    reddit_terms = intent.get("topics", [request.query])
-                    search_tasks.append(eng.reddit_search.search(subreddits, reddit_terms))
-
-                ugc_terms = intent.get("ugc_search_terms", [])
-                if ugc_terms:
-                    search_tasks.append(eng.ugc_search.search(ugc_terms))
-
-                hashtags = intent.get("hashtags", [])
-                if hashtags:
-                    search_tasks.append(eng.hashtag_search.search(hashtags, request.platforms))
-
-                raw_results_groups = await asyncio.gather(*search_tasks, return_exceptions=True)
-
-                raw_results = []
-                for group in raw_results_groups:
-                    if isinstance(group, list):
-                        raw_results.extend(group)
-                    elif isinstance(group, Exception):
-                        logger.error(f"Search task failed: {group}")
-
-                logger.info(f"[Discovery] Got {len(raw_results)} raw results")
-                s.status = "analyzing"
-                await session.flush()
-
-                # Step 3: AI Analysis
-                analyzed = await analyze_results(raw_results, intent, request.query)
-                logger.info(f"[Discovery] AI analyzed {len(analyzed)} results")
-
-                # Step 4: Deduplicate
-                unique = deduplicate_results(analyzed)
-                unique.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
-                final = unique[:request.max_results]
-
-                # Step 5: Store results
-                for rd in final:
-                    result = DiscoveryResult(
-                        search_id=search_id,
-                        name=rd.get("name", "Unknown"),
-                        handle=rd.get("handle"),
-                        platform=rd.get("platform", "unknown"),
-                        profile_url=rd.get("profile_url"),
-                        bio=rd.get("bio"),
-                        email=rd.get("email"),
-                        followers=rd.get("estimated_followers"),
-                        engagement_rate=rd.get("estimated_engagement_rate"),
-                        relevance_score=rd.get("relevance_score"),
-                        categories=rd.get("categories", []),
-                        ai_analysis={
-                            "credentials": rd.get("credentials", []),
-                            "content_fit": rd.get("content_fit_reasoning"),
-                            "red_flags": rd.get("red_flags", []),
-                            "recommended_action": rd.get("recommended_action"),
-                            "other_profiles": rd.get("other_profiles", {}),
-                            "past_partnerships": rd.get("past_partnerships", []),
-                        },
-                        source_type=rd.get("source", "web_search"),
-                        source_url=rd.get("source_urls", [None])[0] if rd.get("source_urls") else None,
-                        raw_data=rd,
-                    )
-                    session.add(result)
-
-                s.results_count = len(final)
-                s.status = "complete"
-                s.completed_at = datetime.utcnow()
-                await session.commit()
-                logger.info(f"[Discovery] Complete: {len(final)} results")
-
-            except Exception as e:
-                logger.error(f"[Discovery] Search failed: {e}")
+        try:
+            async with async_session_factory() as session:
                 try:
+                    eng = DiscoveryEngine()
                     s = await session.get(DiscoverySearch, search_id)
-                    if s:
-                        s.status = "failed"
-                        s.error = str(e)
-                        await session.commit()
-                except:
-                    pass
+                    if not s:
+                        logger.error(f"[Discovery] Search record {search_id} not found")
+                        return
+
+                    s.status = "parsing_intent"
+                    await session.commit()
+
+                    # Step 1: Parse intent
+                    logger.info(f"[Discovery] Parsing intent: {query_text}")
+                    intent = await parse_search_intent(query_text, platforms_list)
+                    s.parsed_intent = intent
+                    s.status = "searching"
+                    await session.commit()
+
+                    # Step 2: Fan out searches
+                    logger.info(f"[Discovery] Running searches...")
+                    search_tasks = []
+
+                    web_queries = intent.get("search_queries", [])
+                    if web_queries:
+                        search_tasks.append(eng.web_search.search(web_queries))
+
+                    subreddits = intent.get("subreddits", [])
+                    if subreddits:
+                        reddit_terms = intent.get("topics", [query_text])
+                        search_tasks.append(eng.reddit_search.search(subreddits, reddit_terms))
+
+                    ugc_terms = intent.get("ugc_search_terms", [])
+                    if ugc_terms:
+                        search_tasks.append(eng.ugc_search.search(ugc_terms))
+
+                    hashtags = intent.get("hashtags", [])
+                    if hashtags:
+                        search_tasks.append(eng.hashtag_search.search(hashtags, platforms_list))
+
+                    raw_results_groups = await asyncio.gather(*search_tasks, return_exceptions=True)
+
+                    raw_results = []
+                    for group in raw_results_groups:
+                        if isinstance(group, list):
+                            raw_results.extend(group)
+                        elif isinstance(group, Exception):
+                            logger.error(f"Search task failed: {group}")
+
+                    logger.info(f"[Discovery] Got {len(raw_results)} raw results")
+                    s.status = "analyzing"
+                    await session.commit()
+
+                    # Step 3: AI Analysis
+                    analyzed = await analyze_results(raw_results, intent, query_text)
+                    logger.info(f"[Discovery] AI analyzed {len(analyzed)} results")
+
+                    # Step 4: Deduplicate
+                    unique = deduplicate_results(analyzed)
+                    unique.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
+                    final = unique[:max_results_val]
+
+                    # Step 5: Store results
+                    for rd in final:
+                        result = DiscoveryResult(
+                            search_id=search_id,
+                            name=rd.get("name", "Unknown"),
+                            handle=rd.get("handle"),
+                            platform=rd.get("platform", "unknown"),
+                            profile_url=rd.get("profile_url"),
+                            bio=rd.get("bio"),
+                            email=rd.get("email"),
+                            followers=rd.get("estimated_followers"),
+                            engagement_rate=rd.get("estimated_engagement_rate"),
+                            relevance_score=rd.get("relevance_score"),
+                            categories=rd.get("categories", []),
+                            ai_analysis={
+                                "credentials": rd.get("credentials", []),
+                                "content_fit": rd.get("content_fit_reasoning"),
+                                "red_flags": rd.get("red_flags", []),
+                                "recommended_action": rd.get("recommended_action"),
+                                "other_profiles": rd.get("other_profiles", {}),
+                                "past_partnerships": rd.get("past_partnerships", []),
+                            },
+                            source_type=rd.get("source", "web_search"),
+                            source_url=rd.get("source_urls", [None])[0] if rd.get("source_urls") else None,
+                            raw_data=rd,
+                        )
+                        session.add(result)
+
+                    s.results_count = len(final)
+                    s.status = "complete"
+                    s.completed_at = datetime.utcnow()
+                    await session.commit()
+                    logger.info(f"[Discovery] Complete: {len(final)} results")
+
+                except Exception as e:
+                    logger.error(f"[Discovery] Search failed: {e}", exc_info=True)
+                    try:
+                        s = await session.get(DiscoverySearch, search_id)
+                        if s:
+                            s.status = "failed"
+                            s.error = str(e)[:500]
+                            await session.commit()
+                    except Exception as e2:
+                        logger.error(f"[Discovery] Failed to update search status: {e2}")
+
+        except Exception as outer_e:
+            logger.error(f"[Discovery] Background task crashed: {outer_e}", exc_info=True)
 
     asyncio.create_task(_run_discovery())
 
