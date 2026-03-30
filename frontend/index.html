@@ -555,8 +555,10 @@
     function DiscoverTab() {
       const [query, setQuery] = useState('');
       const [searching, setSearching] = useState(false);
+      const [searchStatus, setSearchStatus] = useState(null);
       const [results, setResults] = useState(null);
       const [error, setError] = useState(null);
+      const pollRef = useRef(null);
 
       const presets = [
         { label: 'Doctor TikTok', query: 'doctors who talk about heart health on TikTok' },
@@ -567,24 +569,56 @@
         { label: 'Longevity', query: 'longevity biohacking creators on YouTube' },
       ];
 
+      const statusLabels = {
+        starting: 'Starting search...',
+        parsing_intent: 'AI is understanding your query...',
+        searching: 'Searching across platforms...',
+        analyzing: 'AI is analyzing and scoring creators...',
+        complete: 'Search complete',
+        failed: 'Search failed',
+      };
+
       const doSearch = async (q) => {
         if (!q.trim()) return;
         setSearching(true);
         setError(null);
         setResults(null);
+        setSearchStatus(null);
+        clearInterval(pollRef.current);
+
         try {
           const data = await api('/discover', { method: 'POST', body: { query: q, platforms: ['tiktok', 'instagram', 'youtube'], max_results: 20 } });
-          setResults(data);
+          const searchId = data.search_id;
+          setSearchStatus({ status: 'starting' });
+
+          pollRef.current = setInterval(async () => {
+            try {
+              const status = await api(`/discover/${searchId}`);
+              setSearchStatus(status);
+
+              if (status.status === 'complete') {
+                clearInterval(pollRef.current);
+                setResults(status);
+                setSearching(false);
+              } else if (status.status === 'failed') {
+                clearInterval(pollRef.current);
+                setError(status.error || 'Search failed');
+                setSearching(false);
+              }
+            } catch (e) { /* keep polling */ }
+          }, 3000);
+
         } catch (e) {
           setError(e.message);
+          setSearching(false);
         }
-        setSearching(false);
       };
+
+      useEffect(() => () => clearInterval(pollRef.current), []);
 
       const handleSaveAndEnrich = async (result) => {
         try {
           const saved = await api(`/discover/results/${result.id}/save-and-enrich`, { method: 'POST' });
-          // Update the result in-place with the creator ID for polling
           setResults(prev => {
             if (!prev) return prev;
             return {
@@ -660,6 +694,33 @@
           {error && (
             <div style={{ padding: '12px 16px', background: 'var(--red-light)', borderRadius: 'var(--radius-sm)', color: 'var(--red)', fontSize: 13, marginBottom: 16 }}>
               {error}
+            </div>
+          )}
+
+          {/* Search progress */}
+          {searching && searchStatus && (
+            <div className="fade-in" style={{
+              padding: '20px 24px', background: 'var(--bg-card)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)', marginBottom: 20,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                {Icons.loader}
+                <span style={{ fontSize: 14, fontWeight: 500 }}>
+                  {statusLabels[searchStatus.status] || searchStatus.status}
+                </span>
+              </div>
+              <div style={{ height: 3, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%', background: 'var(--accent)', borderRadius: 2,
+                  transition: 'width 0.8s ease',
+                  width: searchStatus.status === 'parsing_intent' ? '20%' :
+                         searchStatus.status === 'searching' ? '50%' :
+                         searchStatus.status === 'analyzing' ? '80%' : '10%',
+                }} />
+              </div>
+              <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', marginTop: 8 }}>
+                This usually takes 1-2 minutes. You can leave this tab open.
+              </div>
             </div>
           )}
 

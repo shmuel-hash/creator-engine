@@ -6,6 +6,7 @@ All endpoints for the creator management platform.
 
 from uuid import UUID
 from typing import Optional
+from datetime import datetime
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
@@ -23,7 +24,9 @@ from app.models.schemas import (
     DiscoveryResultResponse, OutreachEmailCreate, OutreachEmailResponse,
     EmailTemplateCreate, EmailTemplateResponse, ImportResult,
 )
-from app.services.discovery_engine import DiscoveryEngine
+from app.services.discovery_engine import (
+    DiscoveryEngine, parse_search_intent, analyze_results, deduplicate_results,
+)
 from app.services.import_service import import_spreadsheet
 from app.services.clickup_service import ClickUpService
 
@@ -207,12 +210,17 @@ async def import_file(
 
 # ─── DISCOVERY ───
 
-@router.post("/discover", response_model=DiscoverySearchResponse)
+@router.post("/discover")
 async def discover_creators(
     request: DiscoverySearchRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Run an AI-powered creator discovery search."""
+    """
+    Start an AI-powered creator discovery search.
+    Returns immediately with a search_id. Poll GET /discover/{search_id} for results.
+    """
+    import asyncio
+
     engine = DiscoveryEngine()
 
     filters = {}
@@ -225,33 +233,165 @@ async def discover_creators(
     if request.categories:
         filters["categories"] = request.categories
 
-    search = await engine.discover(
+    # Create search record immediately so we have an ID to return
+    search = DiscoverySearch(
         query=request.query,
-        platforms=request.platforms,
+        platforms_searched=request.platforms,
         filters=filters,
-        db=db,
-        max_results=request.max_results,
+        status="starting",
     )
+    db.add(search)
+    await db.commit()
+    await db.refresh(search)
+    search_id = search.id
 
-    # Load results
-    result = await db.execute(
-        select(DiscoveryResult)
-        .where(DiscoveryResult.search_id == search.id)
-        .order_by(desc(DiscoveryResult.relevance_score))
-    )
-    results = result.scalars().all()
+    # Run discovery in background
+    async def _run_discovery():
+        from app.core.database import async_session_factory
+        async with async_session_factory() as session:
+            try:
+                eng = DiscoveryEngine()
+                # Load the search record in this session
+                s = await session.get(DiscoverySearch, search_id)
+                if not s:
+                    return
 
-    return DiscoverySearchResponse(
-        search_id=search.id,
-        query=search.query,
-        status=search.status,
-        parsed_intent=search.parsed_intent,
-        platforms_searched=search.platforms_searched or [],
-        results=[DiscoveryResultResponse.model_validate(r) for r in results],
-        results_count=search.results_count,
-        started_at=search.started_at,
-        completed_at=search.completed_at,
-    )
+                s.status = "parsing_intent"
+                await session.flush()
+
+                # Step 1: Parse intent
+                logger.info(f"[Discovery] Parsing intent: {request.query}")
+                intent = await parse_search_intent(request.query, request.platforms)
+                s.parsed_intent = intent
+                s.status = "searching"
+                await session.flush()
+
+                # Step 2: Fan out searches
+                logger.info(f"[Discovery] Running searches...")
+                search_tasks = []
+
+                web_queries = intent.get("search_queries", [])
+                if web_queries:
+                    search_tasks.append(eng.web_search.search(web_queries))
+
+                subreddits = intent.get("subreddits", [])
+                if subreddits:
+                    reddit_terms = intent.get("topics", [request.query])
+                    search_tasks.append(eng.reddit_search.search(subreddits, reddit_terms))
+
+                ugc_terms = intent.get("ugc_search_terms", [])
+                if ugc_terms:
+                    search_tasks.append(eng.ugc_search.search(ugc_terms))
+
+                hashtags = intent.get("hashtags", [])
+                if hashtags:
+                    search_tasks.append(eng.hashtag_search.search(hashtags, request.platforms))
+
+                raw_results_groups = await asyncio.gather(*search_tasks, return_exceptions=True)
+
+                raw_results = []
+                for group in raw_results_groups:
+                    if isinstance(group, list):
+                        raw_results.extend(group)
+                    elif isinstance(group, Exception):
+                        logger.error(f"Search task failed: {group}")
+
+                logger.info(f"[Discovery] Got {len(raw_results)} raw results")
+                s.status = "analyzing"
+                await session.flush()
+
+                # Step 3: AI Analysis
+                analyzed = await analyze_results(raw_results, intent, request.query)
+                logger.info(f"[Discovery] AI analyzed {len(analyzed)} results")
+
+                # Step 4: Deduplicate
+                unique = deduplicate_results(analyzed)
+                unique.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
+                final = unique[:request.max_results]
+
+                # Step 5: Store results
+                for rd in final:
+                    result = DiscoveryResult(
+                        search_id=search_id,
+                        name=rd.get("name", "Unknown"),
+                        handle=rd.get("handle"),
+                        platform=rd.get("platform", "unknown"),
+                        profile_url=rd.get("profile_url"),
+                        bio=rd.get("bio"),
+                        email=rd.get("email"),
+                        followers=rd.get("estimated_followers"),
+                        engagement_rate=rd.get("estimated_engagement_rate"),
+                        relevance_score=rd.get("relevance_score"),
+                        categories=rd.get("categories", []),
+                        ai_analysis={
+                            "credentials": rd.get("credentials", []),
+                            "content_fit": rd.get("content_fit_reasoning"),
+                            "red_flags": rd.get("red_flags", []),
+                            "recommended_action": rd.get("recommended_action"),
+                        },
+                        source_type=rd.get("source", "web_search"),
+                        source_url=rd.get("source_urls", [None])[0] if rd.get("source_urls") else None,
+                        raw_data=rd,
+                    )
+                    session.add(result)
+
+                s.results_count = len(final)
+                s.status = "complete"
+                s.completed_at = datetime.utcnow()
+                await session.commit()
+                logger.info(f"[Discovery] Complete: {len(final)} results")
+
+            except Exception as e:
+                logger.error(f"[Discovery] Search failed: {e}")
+                try:
+                    s = await session.get(DiscoverySearch, search_id)
+                    if s:
+                        s.status = "failed"
+                        s.error = str(e)
+                        await session.commit()
+                except:
+                    pass
+
+    asyncio.create_task(_run_discovery())
+
+    return {
+        "search_id": str(search_id),
+        "query": request.query,
+        "status": "starting",
+        "message": "Search started. Poll GET /discover/{search_id} for results.",
+    }
+
+
+@router.get("/discover/{search_id}")
+async def get_discovery_results(search_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Poll for discovery search results. Returns status + results when complete."""
+    search = await db.get(DiscoverySearch, search_id)
+    if not search:
+        raise HTTPException(status_code=404, detail="Search not found")
+
+    response = {
+        "search_id": str(search.id),
+        "query": search.query,
+        "status": search.status,
+        "parsed_intent": search.parsed_intent,
+        "platforms_searched": search.platforms_searched or [],
+        "results_count": search.results_count or 0,
+        "started_at": search.started_at.isoformat() if search.started_at else None,
+        "completed_at": search.completed_at.isoformat() if search.completed_at else None,
+        "results": [],
+    }
+
+    # Only load results if complete
+    if search.status == "complete":
+        result = await db.execute(
+            select(DiscoveryResult)
+            .where(DiscoveryResult.search_id == search.id)
+            .order_by(desc(DiscoveryResult.relevance_score))
+        )
+        results = result.scalars().all()
+        response["results"] = [DiscoveryResultResponse.model_validate(r).__dict__ for r in results]
+
+    return response
 
 
 @router.post("/discover/results/{result_id}/save", response_model=CreatorResponse)
