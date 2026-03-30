@@ -11,6 +11,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE ${PORT:-8000}
+# Remove .env if it got copied (Railway uses its own env vars)
+RUN rm -f .env
 
-CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+# Railway sets PORT dynamically
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
