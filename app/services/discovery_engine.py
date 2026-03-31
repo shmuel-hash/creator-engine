@@ -796,22 +796,15 @@ class DiscoveryEngine:
                 if not name and not handle:
                     return creator_data
                 try:
-                    queries = []
-                    if handle:
-                        queries.append(f"{handle} email contact")
-                        queries.append(f"{handle} business inquiries collab")
-                    if name:
-                        queries.append(f'"{name}" email contact health creator')
-                    results = await self.web.search(queries[:2], max_results_per_query=3)
-                    # Look for emails in results
+                    q = f'{handle or name} email contact business inquiries' if handle else f'"{name}" email health creator contact'
+                    results = await self.web.search([q], max_results_per_query=3)
                     import re
                     email_pattern = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
                     found_emails = set()
                     for r in results:
                         text = f"{r.get('title','')} {r.get('snippet','')} {r.get('link','')}"
                         found_emails.update(email_pattern.findall(text))
-                    # Filter out junk emails
-                    junk = {'noreply','no-reply','info@','support@tiktok','support@instagram','example','sentry','abuse'}
+                    junk = {'noreply','no-reply','info@','support@tiktok','support@instagram','example','sentry','abuse','privacy','legal','help@','contact@serper'}
                     good_emails = [e for e in found_emails if not any(j in e.lower() for j in junk)]
                     if good_emails:
                         creator_data["email"] = good_emails[0]
@@ -820,13 +813,15 @@ class DiscoveryEngine:
                     logger.debug(f"[Discovery] Quick contact search failed for {name}: {e}")
                 return creator_data
 
-            # Run contact search in parallel for top 10 results (don't slow down for all)
+            # Run contact search for top 5 only (keep it fast)
             import asyncio
-            contact_tasks = [quick_contact_search(c) for c in final[:10]]
-            enriched_top = await asyncio.gather(*contact_tasks, return_exceptions=True)
-            for i, result in enumerate(enriched_top):
-                if i < len(final) and not isinstance(result, Exception):
-                    final[i] = result
+            top_without_email = [c for c in final[:10] if not c.get("email")][:5]
+            if top_without_email:
+                try:
+                    contact_tasks = [quick_contact_search(c) for c in top_without_email]
+                    await asyncio.wait_for(asyncio.gather(*contact_tasks, return_exceptions=True), timeout=30)
+                except asyncio.TimeoutError:
+                    logger.warning("[Discovery] Contact enrichment timed out after 30s, continuing without")
 
             logger.info(f"[Discovery] Contact enrichment done — {sum(1 for c in final if c.get('email'))} have emails")
 
