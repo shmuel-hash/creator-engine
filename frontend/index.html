@@ -446,7 +446,7 @@
           </div>
 
           {/* Enrich button or enriched state */}
-          {!enrichCId && !enrichDone && !isDuplicate && (
+          {!enrichCId && !enrichDone && !isDuplicate && !c._enriched && !c._enrichingCreatorId && (
             <div style={{marginTop:10}}>
               <button className="btn-terracotta" onClick={doEnrich} style={{width:'100%',justifyContent:'center',fontSize:12,padding:'7px 12px'}}>
                 {I.zap()} {isDiscoveryResult&&!c._saved?'Save & Find Contact':'Find Contact'}
@@ -454,16 +454,19 @@
               {err&&<div style={{fontSize:11,color:'var(--red)',marginTop:4}}>{err}</div>}
             </div>
           )}
-          {enrichDone && (
+          {(c._enrichingCreatorId && !c._enriched && !enrichDone) && (
+            <div style={{marginTop:8}}><EnrichmentProgress creatorId={c._enrichingCreatorId} onComplete={onEnrichDone}/></div>
+          )}
+          {(enrichDone || c._enriched) && (
             <div style={{marginTop:10,padding:'10px 12px',background:'var(--sage-light)',borderRadius:'var(--radius-xs)',border:'1px solid var(--sage)'}}>
               <div style={{fontSize:11,fontWeight:600,color:'var(--sage)',marginBottom:6,display:'flex',alignItems:'center',gap:4}}>{I.check()} Enriched</div>
-              {c.email && <div style={{fontSize:11,fontFamily:'var(--font-mono)',color:'var(--text-secondary)',marginBottom:4}}>{I.mail()} {c.email}</div>}
-              {c.total_followers && <div style={{fontSize:11,color:'var(--text-secondary)',marginBottom:4}}>{fmtNum(c.total_followers)} followers</div>}
-              {c.bio && <div style={{fontSize:11,color:'var(--text-muted)',lineHeight:1.5,maxHeight:40,overflow:'hidden'}}>{c.bio}</div>}
-              <button onClick={(e)=>{e.stopPropagation();onSelect&&onSelect(c);}} style={{marginTop:6,background:'none',border:'none',cursor:'pointer',fontSize:11,color:'var(--terracotta)',fontWeight:600,padding:0}}>View full profile →</button>
+              {(c.email||local.email) && <div style={{fontSize:11,fontFamily:'var(--font-mono)',color:'var(--text-secondary)',marginBottom:4}}>{I.mail()} {c.email||local.email}</div>}
+              {(c.total_followers||local.total_followers) && <div style={{fontSize:11,color:'var(--text-secondary)',marginBottom:4}}>{fmtNum(c.total_followers||local.total_followers)} followers</div>}
+              {(c.bio||local.bio) && <div style={{fontSize:11,color:'var(--text-muted)',lineHeight:1.5,maxHeight:40,overflow:'hidden'}}>{c.bio||local.bio}</div>}
+              <button onClick={(e)=>{e.stopPropagation();onSelect&&onSelect({...c,...local});}} style={{marginTop:6,background:'none',border:'none',cursor:'pointer',fontSize:11,color:'var(--terracotta)',fontWeight:600,padding:0}}>View full profile →</button>
             </div>
           )}
-          {enrichCId && <div style={{marginTop:8}}><EnrichmentProgress creatorId={enrichCId} onComplete={onEnrichDone}/></div>}
+          {enrichCId && !c._enrichingCreatorId && <div style={{marginTop:8}}><EnrichmentProgress creatorId={enrichCId} onComplete={onEnrichDone}/></div>}
         </div>
       </div>;
     }
@@ -481,13 +484,13 @@
       const [existing,setExisting]=useState([]); const [viewMode,setViewMode]=useState('grid');
       const [typeFilter,setTypeFilter]=useState(''); const [nicheFilter,setNicheFilter]=useState('');
       const [batchEnriching,setBatchEnriching]=useState(false);
-      const [enrichedMap,setEnrichedMap]=useState({}); // discovery_result_id → {creator_id, status, data}
+      const [savedThisSession,setSavedThisSession]=useState(new Set()); // discovery result IDs saved this session
       const pollRef=useRef(null);
       const batchPollRef=useRef(null);
 
       useEffect(()=>{ api('/creators',{params:{per_page:500}}).then(d=>setExisting(d.creators||[])).catch(()=>{}); },[]);
       const dedupSet=useMemo(()=>{ const s=new Set(); existing.forEach(c=>{ if(c.name)s.add(c.name.toLowerCase().trim()); if(c.email)s.add(c.email.toLowerCase().trim()); ['tiktok_handle','instagram_handle','youtube_handle','twitter_handle'].forEach(k=>{if(c[k])s.add(c[k].toLowerCase().replace('@','').trim());}); }); return s; },[existing]);
-      const checkDup=(r)=>{ if(r.name&&dedupSet.has(r.name.toLowerCase().trim()))return true; if(r.email&&dedupSet.has(r.email.toLowerCase().trim()))return true; const h=(r.handle||'').toLowerCase().replace('@','').trim(); return h&&dedupSet.has(h); };
+      const checkDup=(r)=>{ if(savedThisSession.has(r.id)||r._saved)return false; if(r.name&&dedupSet.has(r.name.toLowerCase().trim()))return true; if(r.email&&dedupSet.has(r.email.toLowerCase().trim()))return true; const h=(r.handle||'').toLowerCase().replace('@','').trim(); return h&&dedupSet.has(h); };
 
       const presets=[
         {l:'Doctor TikTok',q:'doctors who talk about heart health on TikTok'},
@@ -507,7 +510,7 @@
         }catch(e){setError(e.message);setSearching(false);}};
       useEffect(()=>()=>{clearInterval(pollRef.current);clearInterval(batchPollRef.current);},[]);
 
-      const handleSAE=async(result)=>{ const saved=await api(`/discover/results/${result.id}/save-and-enrich`,{method:'POST'}); setResults(p=>p?{...p,results:p.results.map(r=>r.id===result.id?{...r,_saved:true}:r)}:p); if(saved.creator)setExisting(p=>[...p,saved.creator]); return saved; };
+      const handleSAE=async(result)=>{ const saved=await api(`/discover/results/${result.id}/save-and-enrich`,{method:'POST'}); setSavedThisSession(prev=>new Set([...prev,result.id])); setResults(p=>p?{...p,results:p.results.map(r=>r.id===result.id?{...r,_saved:true,_enrichingCreatorId:saved.creator.id}:r)}:p); if(saved.creator)setExisting(p=>[...p,saved.creator]); return saved; };
 
       const handleSaveAll=async()=>{
         if(!results?.search_id)return; setBatchEnriching(true);
@@ -515,18 +518,27 @@
           const resp=await api(`/discover/${results.search_id}/save-and-enrich-all`,{method:'POST'});
           if(resp.creators?.length){
             const cids=resp.creators.map(c=>c.id);
-            // Mark all as saved
+            const drIds=resp.creators.map(c=>c.discovery_result_id);
+            // Track all as saved this session
+            setSavedThisSession(prev=>new Set([...prev,...drIds]));
+            // Mark all as saved with enriching creator IDs
             setResults(p=>p?{...p,results:p.results.map(r=>{const match=resp.creators.find(c=>c.discovery_result_id===r.id);return match?{...r,_saved:true,_enrichingCreatorId:match.id}:r;})}:p);
-            // Poll enrichments
+            // Poll enrichments — when each completes, fetch full creator data and update the result
             batchPollRef.current=setInterval(async()=>{
               let pending=0;
-              for(const cid of cids){
-                try{const s=await api(`/creators/${cid}/enrich/status`);if(!['complete','failed'].includes(s.status))pending++;}catch(e){}
+              for(const cr of resp.creators){
+                try{
+                  const s=await api(`/creators/${cr.id}/enrich/status`);
+                  if(s.status==='complete'){
+                    // Fetch enriched creator and merge into results
+                    try{
+                      const full=await api(`/creators/${cr.id}`);
+                      setResults(p=>p?{...p,results:p.results.map(r=>r.id===cr.discovery_result_id?{...r,...full,_saved:true,_enriched:true,id:r.id}:r)}:p);
+                    }catch(e){}
+                  } else if(s.status!=='failed') pending++;
+                }catch(e){}
               }
-              if(pending===0){clearInterval(batchPollRef.current);setBatchEnriching(false);
-                // Refresh existing creators
-                api('/creators',{params:{per_page:500}}).then(d=>setExisting(d.creators||[])).catch(()=>{});
-              }
+              if(pending===0){clearInterval(batchPollRef.current);setBatchEnriching(false);}
             },4000);
           } else { setBatchEnriching(false); }
         }catch(e){console.error(e);setBatchEnriching(false);}
@@ -539,7 +551,7 @@
         // Apply niche filter
         if (nicheFilter) t = t.filter(r => (r.ai_analysis?.content_niches||[]).includes(nicheFilter) || (r.categories||[]).some(c=>c.toLowerCase().includes(nicheFilter.toLowerCase())));
         return t.sort((a,b)=>a._isDup!==b._isDup?(a._isDup?1:-1):(b.relevance_score||0)-(a.relevance_score||0));
-      },[results,dedupSet,typeFilter,nicheFilter]);
+      },[results,dedupSet,typeFilter,nicheFilter,savedThisSession]);
       const newC=sorted.filter(r=>!r._isDup).length, dupC=sorted.filter(r=>r._isDup).length;
 
       return <div>
