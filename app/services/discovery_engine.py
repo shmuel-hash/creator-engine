@@ -826,13 +826,74 @@ class DiscoveryEngine:
 
             logger.info(f"[Discovery] Contact enrichment done — {sum(1 for c in final if c.get('email'))} have emails")
 
-            # Step 6: Store results (filter out junk first)
+            # ─── VALIDATION & CLEANUP before storing ───
+            LEGIT_DOMAINS = {'tiktok.com','instagram.com','youtube.com','twitter.com','x.com','linkedin.com','facebook.com','threads.net'}
+            JUNK_DOMAINS = {'twstalker','tweetdeck','nitter','socialblade','social-searcher','hootsuite','sproutsocial','followerwonk','thetalentnet'}
+            FAKE_EMAILS = {'available upon request','email upon request','available on request','contact via','dm for','upon request','n/a','none','not available','tbd','pending'}
+
+            def clean_profile_url(url):
+                """Only keep URLs that point to actual social platforms."""
+                if not url:
+                    return None
+                url_lower = url.lower()
+                # Check against junk domains
+                if any(junk in url_lower for junk in JUNK_DOMAINS):
+                    return None
+                # Check if it's a real platform URL
+                if any(domain in url_lower for domain in LEGIT_DOMAINS):
+                    return url
+                # Allow linktree, linktr.ee, bio links
+                if 'linktr' in url_lower or 'bio' in url_lower:
+                    return url
+                return None
+
+            def clean_email(email):
+                """Filter out fake/placeholder emails."""
+                if not email:
+                    return None
+                email_lower = email.lower().strip()
+                if any(fake in email_lower for fake in FAKE_EMAILS):
+                    return None
+                if '@' not in email_lower:
+                    return None
+                if len(email_lower) < 5:
+                    return None
+                return email
+
+            for rd in final:
+                # Clean profile URL
+                rd["profile_url"] = clean_profile_url(rd.get("profile_url"))
+                # Clean email
+                rd["email"] = clean_email(rd.get("email"))
+                # Clean other profile URLs
+                if rd.get("other_profiles"):
+                    cleaned = {}
+                    for plat, val in rd["other_profiles"].items():
+                        if isinstance(val, str) and val.startswith('http'):
+                            cleaned_url = clean_profile_url(val)
+                            if cleaned_url:
+                                cleaned[plat] = cleaned_url
+                        elif isinstance(val, str) and val.startswith('@'):
+                            cleaned[plat] = val  # Handle is fine
+                        elif isinstance(val, str) and len(val) > 2:
+                            cleaned[plat] = val  # Username is fine
+                    rd["other_profiles"] = cleaned
+
+            # Step 6: Store results (filter out junk)
             stored_count = 0
             for result_data in final:
                 # Skip results with recommended_action = "skip" or score below 25
                 if result_data.get("recommended_action") == "skip":
                     continue
                 if (result_data.get("relevance_score") or 0) < 25:
+                    continue
+                # Skip results with no name or only a first name and no handle
+                name = result_data.get("name", "")
+                handle = result_data.get("handle")
+                if not name or name == "Unknown":
+                    continue
+                # If only first name (no space) AND no handle AND no profile URL, skip
+                if ' ' not in name and not handle and not result_data.get("profile_url"):
                     continue
 
                 result = DiscoveryResult(

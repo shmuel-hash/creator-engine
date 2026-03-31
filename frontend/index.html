@@ -206,6 +206,12 @@
 
     function EmailQuality({email}) {
       if (!email) return null;
+      // Filter out fake/placeholder emails
+      const lower = email.toLowerCase();
+      if (['available','upon request','contact via','dm for','n/a','none','tbd','pending'].some(f => lower.includes(f))) {
+        return <span style={{fontSize:12,color:'var(--text-muted)',display:'inline-flex',alignItems:'center',gap:4}}>{I.mail()} No direct email found</span>;
+      }
+      if (!email.includes('@')) return null;
       const d = email.split('@')[1]?.toLowerCase()||'';
       const gen = ['gmail.com','yahoo.com','hotmail.com','outlook.com','aol.com','icloud.com'].includes(d);
       const agent = d.includes('manager')||d.includes('talent')||d.includes('agency')||email.includes('mgmt')||email.includes('booking');
