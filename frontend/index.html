@@ -269,12 +269,19 @@
 
             {/* Tags row */}
             <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:16}}>
+              {ai.creator_type && <Pill color="var(--terracotta)" bg="var(--terracotta-light)" style={{fontWeight:700}}>{ai.creator_type}</Pill>}
               {ai.country && <Pill color="var(--text-secondary)" bg="var(--bg-muted)">{I.mapPin()} {ai.country}</Pill>}
               {c.pipeline_stage && <Pill color="var(--text-secondary)" bg="var(--bg-muted)">{c.pipeline_stage}</Pill>}
               {c.quality_tier && <Pill color="var(--sage)" bg="var(--sage-light)">{c.quality_tier}</Pill>}
               {creds.map((cr,i)=><Pill key={i} color="var(--blue)" bg="var(--blue-light)">{I.award()} {cr}</Pill>)}
-              {c.categories?.slice(0,4).map(cat=><Pill key={cat}>{cat}</Pill>)}
             </div>
+            {/* Content niches */}
+            {((ai.content_niches||[]).length > 0 || (c.categories||[]).length > 0) && (
+              <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:12}}>
+                {(ai.content_niches||[]).map(n=><Pill key={n} color="var(--sage)" bg="var(--sage-light)">{n}</Pill>)}
+                {!ai.content_niches?.length && c.categories?.slice(0,4).map(cat=><Pill key={cat}>{cat}</Pill>)}
+              </div>
+            )}
 
             {/* Email */}
             {c.email && <div style={{marginBottom:12}}><EmailQuality email={c.email}/></div>}
@@ -411,12 +418,14 @@
             </div>
           </div>
 
-          {/* Credentials + categories */}
+          {/* Type + Credentials + Niches */}
           <div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:8}}>
+            {ai.creator_type && <Pill color="var(--terracotta)" bg="var(--terracotta-light)" style={{fontSize:10,fontWeight:700}}>{ai.creator_type}</Pill>}
             {creds.slice(0,2).map((cr,i)=><Pill key={i} color="var(--blue)" bg="var(--blue-light)" style={{fontSize:10}}>{cr}</Pill>)}
+            {(ai.content_niches||[]).slice(0,2).map(n=><Pill key={n} color="var(--sage)" bg="var(--sage-light)" style={{fontSize:10}}>{n}</Pill>)}
+            {!ai.creator_type && c.categories?.slice(0,2).map(cat=><Pill key={cat} style={{fontSize:10}}>{cat}</Pill>)}
             {ai.country && <Pill style={{fontSize:10}}>{ai.country}</Pill>}
-            {c.categories?.slice(0,2).map(cat=><Pill key={cat} style={{fontSize:10}}>{cat}</Pill>)}
-            {!platforms.length && !c.handle && <Pill color="var(--red)" bg="var(--red-light)" style={{fontSize:10}}>{I.alert()} No social found</Pill>}
+            {!platforms.length && !c.handle && <Pill color="var(--red)" bg="var(--red-light)" style={{fontSize:10}}>{I.alert()} No social</Pill>}
           </div>
 
           {/* Stats row */}
@@ -451,6 +460,10 @@
       </div>;
     }
 
+    // ─── FILTER CONSTANTS ───
+    const CREATOR_TYPES = ['Doctor/Medical','UGC Creator','Health Influencer','Fitness Creator','Mom/Parenting','Wellness/Lifestyle','Nutritionist/Dietitian','Podcaster'];
+    const CONTENT_NICHES = ['Heart Health','Gut Health','Longevity','Supplements','Nutrition','Fitness','General Wellness','Weight Loss','Mental Health','Biohacking',"Women's Health","Men's Health"];
+
     // ─── DISCOVER TAB ───
     function DiscoverTab() {
       const {setSelected} = useContext(DetailCtx);
@@ -458,6 +471,7 @@
       const [searchStatus,setSearchStatus]=useState(null); const [results,setResults]=useState(null);
       const [error,setError]=useState(null); const [resultCount,setResultCount]=useState(20);
       const [existing,setExisting]=useState([]); const [viewMode,setViewMode]=useState('grid');
+      const [typeFilter,setTypeFilter]=useState(''); const [nicheFilter,setNicheFilter]=useState('');
       const pollRef=useRef(null);
 
       useEffect(()=>{ api('/creators',{params:{per_page:500}}).then(d=>setExisting(d.creators||[])).catch(()=>{}); },[]);
@@ -484,7 +498,14 @@
 
       const handleSAE=async(result)=>{ const saved=await api(`/discover/results/${result.id}/save-and-enrich`,{method:'POST'}); setResults(p=>p?{...p,results:p.results.map(r=>r.id===result.id?{...r,_saved:true}:r)}:p); if(saved.creator)setExisting(p=>[...p,saved.creator]); return saved; };
 
-      const sorted=useMemo(()=>{ if(!results?.results)return[]; const t=results.results.map(r=>({...r,_isDup:checkDup(r)})); return t.sort((a,b)=>a._isDup!==b._isDup?(a._isDup?1:-1):(b.relevance_score||0)-(a.relevance_score||0)); },[results,dedupSet]);
+      const sorted=useMemo(()=>{ if(!results?.results)return[];
+        let t=results.results.map(r=>({...r,_isDup:checkDup(r)}));
+        // Apply type filter
+        if (typeFilter) t = t.filter(r => (r.ai_analysis?.creator_type||'') === typeFilter || (r.categories||[]).some(c=>c.toLowerCase().includes(typeFilter.toLowerCase())));
+        // Apply niche filter
+        if (nicheFilter) t = t.filter(r => (r.ai_analysis?.content_niches||[]).includes(nicheFilter) || (r.categories||[]).some(c=>c.toLowerCase().includes(nicheFilter.toLowerCase())));
+        return t.sort((a,b)=>a._isDup!==b._isDup?(a._isDup?1:-1):(b.relevance_score||0)-(a.relevance_score||0));
+      },[results,dedupSet,typeFilter,nicheFilter]);
       const newC=sorted.filter(r=>!r._isDup).length, dupC=sorted.filter(r=>r._isDup).length;
 
       return <div>
@@ -534,10 +555,19 @@
           {results&&<div style={{paddingTop:8,paddingBottom:32}}>
             {/* Toolbar */}
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16,flexWrap:'wrap',gap:8}}>
-              <div style={{display:'flex',alignItems:'center',gap:12}}>
-                <span style={{fontSize:14,fontWeight:600}}>{sorted.length} creators found</span>
+              <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                <span style={{fontSize:14,fontWeight:600}}>{sorted.length} creators</span>
                 {newC>0&&<Pill color="var(--sage)" bg="var(--sage-light)">{newC} new</Pill>}
                 {dupC>0&&<Pill color="var(--amber)" bg="var(--amber-light)">{dupC} in DB</Pill>}
+                <select value={typeFilter} onChange={e=>setTypeFilter(e.target.value)} style={{padding:'6px 10px',border:'1px solid var(--border)',borderRadius:'var(--radius-xs)',fontSize:12,background:'var(--bg-card)',color:typeFilter?'var(--terracotta)':'var(--text-secondary)',cursor:'pointer',fontFamily:'var(--font-body)'}}>
+                  <option value="">All Types</option>
+                  {CREATOR_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+                </select>
+                <select value={nicheFilter} onChange={e=>setNicheFilter(e.target.value)} style={{padding:'6px 10px',border:'1px solid var(--border)',borderRadius:'var(--radius-xs)',fontSize:12,background:'var(--bg-card)',color:nicheFilter?'var(--terracotta)':'var(--text-secondary)',cursor:'pointer',fontFamily:'var(--font-body)'}}>
+                  <option value="">All Niches</option>
+                  {CONTENT_NICHES.map(n=><option key={n} value={n}>{n}</option>)}
+                </select>
+                {(typeFilter||nicheFilter)&&<button onClick={()=>{setTypeFilter('');setNicheFilter('');}} style={{background:'none',border:'none',cursor:'pointer',color:'var(--terracotta)',fontSize:12,fontWeight:500}}>Clear filters</button>}
               </div>
               <div style={{display:'flex',alignItems:'center',gap:4,background:'var(--bg-muted)',borderRadius:'var(--radius-xs)',padding:3}}>
                 <button onClick={()=>setViewMode('grid')} style={{padding:6,borderRadius:4,border:'none',cursor:'pointer',background:viewMode==='grid'?'var(--bg-card)':'transparent',color:viewMode==='grid'?'var(--text)':'var(--text-muted)',display:'flex',boxShadow:viewMode==='grid'?'var(--shadow-sm)':'none'}}>{I.grid()}</button>
@@ -631,6 +661,10 @@
               </select>
               <select onChange={e=>{setFilters(f=>({...f,quality_tier:e.target.value||undefined}));setPage(1);}} style={{padding:'7px 10px',border:'1px solid var(--border)',borderRadius:'var(--radius-xs)',fontSize:12,background:'var(--bg-card)',color:'var(--text-secondary)',cursor:'pointer'}}>
                 <option value="">All Tiers</option><option value="A+">A+</option><option value="A">A</option><option value="B">B</option><option value="C">C</option>
+              </select>
+              <select onChange={e=>{setFilters(f=>({...f,categories:e.target.value||undefined}));setPage(1);}} style={{padding:'7px 10px',border:'1px solid var(--border)',borderRadius:'var(--radius-xs)',fontSize:12,background:'var(--bg-card)',color:'var(--text-secondary)',cursor:'pointer'}}>
+                <option value="">All Categories</option>
+                {CREATOR_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
               </select>
             </div>
             <div style={{display:'flex',alignItems:'center',gap:4,background:'var(--bg-muted)',borderRadius:'var(--radius-xs)',padding:3}}>

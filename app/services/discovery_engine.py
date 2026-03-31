@@ -539,6 +539,8 @@ For each person you identify, extract:
 8. **Partnership signals**: "business inquiries", "PR friendly", "DM for collabs", UGC in bio
 9. **Country/Region**: Where they're based (extract from bio, location, URL domains)
 10. **Estimated rate**: Based on follower count (micro: $200-$800, mid: $800-$3000)
+11. **Creator type**: Pick ONE from this exact list: "Doctor/Medical", "UGC Creator", "Health Influencer", "Fitness Creator", "Mom/Parenting", "Wellness/Lifestyle", "Nutritionist/Dietitian", "Podcaster", "Other"
+12. **Content niches**: Pick 1-3 from this exact list: "Heart Health", "Gut Health", "Longevity", "Supplements", "Nutrition", "Fitness", "General Wellness", "Weight Loss", "Mental Health", "Biohacking", "Women's Health", "Men's Health"
 
 Return a JSON array:
 [
@@ -552,6 +554,8 @@ Return a JSON array:
     "email": "jane@drjanesmith.com",
     "estimated_followers": 45000,
     "estimated_engagement_rate": null,
+    "creator_type": "Doctor/Medical",
+    "content_niches": ["Heart Health", "Supplements"],
     "categories": ["Doctor", "Family Medicine", "Heart Health"],
     "credentials": ["MD"],
     "past_partnerships": ["Brand X supplement"],
@@ -918,6 +922,8 @@ class DiscoveryEngine:
                         "source_urls": result_data.get("source_urls", []),
                         "country": result_data.get("country"),
                         "estimated_rate": result_data.get("estimated_rate"),
+                        "creator_type": result_data.get("creator_type"),
+                        "content_niches": result_data.get("content_niches", []),
                     },
                     source_type=result_data.get("source", "web_search"),
                     source_url=result_data.get("source_urls", [None])[0] if result_data.get("source_urls") else None,
