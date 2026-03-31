@@ -273,11 +273,19 @@
 
             {/* Tags row */}
             <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:16}}>
+              {ai.credential_tier==='physician' && <Pill color="white" bg="#2563eb" style={{fontWeight:700}}>{I.award()} MD/DO</Pill>}
+              {ai.credential_tier==='allied' && <Pill color="white" bg="#7c3aed" style={{fontWeight:700}}>Allied Health</Pill>}
+              {ai.credential_tier==='other_medical' && <Pill color="white" bg="#059669" style={{fontWeight:700}}>Alt. Medical</Pill>}
               {ai.creator_type && <Pill color="var(--terracotta)" bg="var(--terracotta-light)" style={{fontWeight:700}}>{ai.creator_type}</Pill>}
+              {ai.medical_specialty && <Pill color="var(--blue)" bg="var(--blue-light)">{ai.medical_specialty}</Pill>}
               {ai.country && <Pill color="var(--text-secondary)" bg="var(--bg-muted)">{I.mapPin()} {ai.country}</Pill>}
+              {ai.language && ai.language !== 'English' && <Pill color="var(--amber)" bg="var(--amber-light)">{ai.language}</Pill>}
               {c.pipeline_stage && <Pill color="var(--text-secondary)" bg="var(--bg-muted)">{c.pipeline_stage}</Pill>}
               {c.quality_tier && <Pill color="var(--sage)" bg="var(--sage-light)">{c.quality_tier}</Pill>}
-              {creds.map((cr,i)=><Pill key={i} color="var(--blue)" bg="var(--blue-light)">{I.award()} {cr}</Pill>)}
+              {!ai.credential_tier && creds.map((cr,i)=><Pill key={i} color="var(--blue)" bg="var(--blue-light)">{I.award()} {cr}</Pill>)}
+              {ai.estimated_rate && <Pill color="var(--text-secondary)" bg="var(--bg-muted)">{ai.estimated_rate}</Pill>}
+              {ai.practice_affiliation && <Pill color="var(--text-secondary)" bg="var(--bg-muted)">{ai.practice_affiliation}</Pill>}
+              {ai.source_layer==='deep' && <Pill color="var(--amber)" bg="var(--amber-light)">Deep find</Pill>}
             </div>
             {/* Content niches */}
             {((ai.content_niches||[]).length > 0 || (c.categories||[]).length > 0) && (
@@ -320,8 +328,12 @@
             {(ai.content_fit||partnerships.length>0||ai.red_flags?.length>0) && (
               <div style={{padding:'14px 16px',background:'var(--bg-inset)',borderRadius:'var(--radius-sm)',marginBottom:16,border:'1px solid var(--border-light)'}}>
                 <div style={{fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.06em',color:'var(--text-muted)',marginBottom:8}}>{I.zap()} AI Analysis</div>
+                {partnerships.length>0 && <div style={{marginBottom:10,padding:'8px 10px',background:'var(--purple-light)',borderRadius:'var(--radius-xs)',border:'1px solid var(--purple)'}}>
+                  <div style={{fontSize:11,fontWeight:600,color:'var(--purple)',marginBottom:4}}>Previous Brand Partnerships</div>
+                  <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>{partnerships.map((p,i)=><Pill key={i} color="var(--purple)" bg="white" style={{fontSize:11}}>{p}</Pill>)}</div>
+                </div>}
+                {partnerships.length===0 && <div style={{marginBottom:8,padding:'6px 10px',background:'var(--bg-muted)',borderRadius:'var(--radius-xs)',fontSize:11,color:'var(--text-muted)',fontStyle:'italic'}}>No known brand partnerships found — may need manual research</div>}
                 {ai.content_fit && <p style={{fontSize:12,color:'var(--text-secondary)',lineHeight:1.6,marginBottom:8}}>{ai.content_fit}</p>}
-                {partnerships.length>0 && <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}><span style={{fontSize:11,color:'var(--text-muted)'}}>Partnerships:</span>{partnerships.map((p,i)=><Pill key={i} color="var(--purple)" bg="var(--purple-light)">{p}</Pill>)}</div>}
                 {ai.red_flags?.length>0 && <div style={{display:'flex',gap:6,flexWrap:'wrap'}}><span style={{fontSize:11,color:'var(--red)'}}>{I.alert()} Flags:</span>{ai.red_flags.map((f,i)=><Pill key={i} color="var(--red)" bg="var(--red-light)">{f}</Pill>)}</div>}
               </div>
             )}
@@ -407,17 +419,17 @@
 
       return <div className="card-warm" style={{opacity:isDuplicate?0.5:1,animationDelay:`${delay*40}ms`}} onClick={()=>onSelect&&onSelect(c)}>
         {/* Cover gradient */}
-        <div style={{height:80,background:isDuplicate?'var(--bg-muted)':`linear-gradient(135deg, var(--terracotta-light) 0%, var(--peach) 60%, var(--sage-light) 100%)`,position:'relative'}}>
+        <div style={{height:56,background:isDuplicate?'var(--bg-muted)':`linear-gradient(135deg, var(--terracotta-light) 0%, var(--peach) 60%, var(--sage-light) 100%)`,position:'relative'}}>
           {c.relevance_score!=null && <div style={{position:'absolute',top:8,right:8}}><ScoreRing score={c.relevance_score} size={36}/></div>}
           {isDuplicate && <div style={{position:'absolute',top:8,left:8}}><Pill color="var(--amber)" bg="var(--amber-light)">{I.database()} In DB</Pill></div>}
         </div>
 
         <div style={{padding:'0 16px 16px',cursor:'pointer'}}>
           {/* Avatar overlapping cover */}
-          <div style={{display:'flex',alignItems:'flex-end',gap:10,marginTop:-20,marginBottom:10}}>
-            <div style={{border:'3px solid var(--bg-card)',borderRadius:'50%'}}><Avatar name={c.name} size={44} src={ai.avatar_url || ai.apify_profile?.avatar_url}/></div>
-            <div style={{flex:1,minWidth:0,paddingBottom:2}}>
-              <div style={{fontWeight:600,fontSize:14,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.name}</div>
+          <div style={{display:'flex',alignItems:'flex-end',gap:10,marginTop:-22,marginBottom:10}}>
+            <div style={{border:'3px solid var(--bg-card)',borderRadius:'50%',flexShrink:0}}><Avatar name={c.name} size={44} src={ai.avatar_url || ai.apify_profile?.avatar_url}/></div>
+            <div style={{flex:1,minWidth:0,paddingBottom:2,paddingTop:24}}>
+              <div style={{fontWeight:600,fontSize:14,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={c.name}>{c.name}</div>
               {platforms[0]?.h && (()=>{
                 const handle=platforms[0].h.replace('@','');
                 const pUrl=platforms[0].u || (platforms[0].n==='tiktok'?`https://www.tiktok.com/@${handle}`:platforms[0].n==='instagram'?`https://www.instagram.com/${handle}/`:platforms[0].n==='youtube'?`https://www.youtube.com/@${handle}`:null);
@@ -429,11 +441,19 @@
 
           {/* Type + Credentials + Niches */}
           <div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:8}}>
-            {ai.creator_type && <Pill color="var(--terracotta)" bg="var(--terracotta-light)" style={{fontSize:10,fontWeight:700}}>{ai.creator_type}</Pill>}
-            {creds.slice(0,2).map((cr,i)=><Pill key={i} color="var(--blue)" bg="var(--blue-light)" style={{fontSize:10}}>{cr}</Pill>)}
+            {ai.credential_tier==='physician' && <Pill color="white" bg="#2563eb" style={{fontSize:10,fontWeight:700}}>MD/DO</Pill>}
+            {ai.credential_tier==='allied' && <Pill color="white" bg="#7c3aed" style={{fontSize:10,fontWeight:700}}>Allied Health</Pill>}
+            {ai.credential_tier==='other_medical' && <Pill color="white" bg="#059669" style={{fontSize:10,fontWeight:700}}>Alt. Medical</Pill>}
+            {ai.creator_type && !ai.credential_tier && <Pill color="var(--terracotta)" bg="var(--terracotta-light)" style={{fontSize:10,fontWeight:700}}>{ai.creator_type}</Pill>}
+            {ai.creator_type && ai.credential_tier && <Pill color="var(--terracotta)" bg="var(--terracotta-light)" style={{fontSize:10}}>{ai.creator_type}</Pill>}
+            {ai.medical_specialty && <Pill color="var(--blue)" bg="var(--blue-light)" style={{fontSize:10}}>{ai.medical_specialty}</Pill>}
+            {!ai.medical_specialty && creds.slice(0,2).map((cr,i)=><Pill key={i} color="var(--blue)" bg="var(--blue-light)" style={{fontSize:10}}>{cr}</Pill>)}
             {(ai.content_niches||[]).slice(0,2).map(n=><Pill key={n} color="var(--sage)" bg="var(--sage-light)" style={{fontSize:10}}>{n}</Pill>)}
-            {!ai.creator_type && c.categories?.slice(0,2).map(cat=><Pill key={cat} style={{fontSize:10}}>{cat}</Pill>)}
+            {!ai.creator_type && !ai.credential_tier && c.categories?.slice(0,2).map(cat=><Pill key={cat} style={{fontSize:10}}>{cat}</Pill>)}
             {ai.country && <Pill style={{fontSize:10}}>{ai.country}</Pill>}
+            {ai.language && ai.language !== 'English' && ai.language !== 'Spanish' && <Pill color="var(--red)" bg="var(--red-light)" style={{fontSize:10}}>{ai.language}</Pill>}
+            {ai.source_layer==='deep' && <Pill color="var(--amber)" bg="var(--amber-light)" style={{fontSize:10}}>Deep find</Pill>}
+            {ai.estimated_rate && <Pill style={{fontSize:10}}>{ai.estimated_rate}</Pill>}
             {!platforms.length && !c.handle && <Pill color="var(--red)" bg="var(--red-light)" style={{fontSize:10}}>{I.alert()} No social</Pill>}
           </div>
 
@@ -494,14 +514,18 @@
       const [typeFilter,setTypeFilter]=useState(''); const [nicheFilter,setNicheFilter]=useState('');
       const [batchEnriching,setBatchEnriching]=useState(false);
       const [savedThisSession,setSavedThisSession]=useState(new Set()); // discovery result IDs saved this session
+      const [doctorMode,setDoctorMode]=useState(false);
+      const [credentialFilter,setCredentialFilter]=useState(''); // '', 'physician', 'allied', 'other_medical'
+      const [deepSearching,setDeepSearching]=useState(false);
       const pollRef=useRef(null);
       const batchPollRef=useRef(null);
+      const deepPollRef=useRef(null);
 
       useEffect(()=>{ api('/creators',{params:{per_page:500}}).then(d=>setExisting(d.creators||[])).catch(()=>{}); },[]);
       const dedupSet=useMemo(()=>{ const s=new Set(); existing.forEach(c=>{ if(c.name)s.add(c.name.toLowerCase().trim()); if(c.email)s.add(c.email.toLowerCase().trim()); ['tiktok_handle','instagram_handle','youtube_handle','twitter_handle'].forEach(k=>{if(c[k])s.add(c[k].toLowerCase().replace('@','').trim());}); }); return s; },[existing]);
       const checkDup=(r)=>{ if(savedThisSession.has(r.id)||r._saved)return false; if(r.name&&dedupSet.has(r.name.toLowerCase().trim()))return true; if(r.email&&dedupSet.has(r.email.toLowerCase().trim()))return true; const h=(r.handle||'').toLowerCase().replace('@','').trim(); return h&&dedupSet.has(h); };
 
-      const presets=[
+      const generalPresets=[
         {l:'Doctor TikTok',q:'doctors who talk about heart health on TikTok'},
         {l:'Gen Z Wellness',q:'Gen Z wellness creators on Instagram and TikTok'},
         {l:'Gut Health',q:'gut health nutrition creators with 50k-500k followers'},
@@ -509,15 +533,39 @@
         {l:'UGC Health',q:'UGC creators specializing in health supplements'},
         {l:'Longevity',q:'longevity biohacking creators on YouTube'},
       ];
-      const statusLabels={starting:'Starting search...',parsing_intent:'Understanding your query...',searching:'Searching across platforms...',analyzing:'Analyzing and scoring creators...',complete:'Complete',failed:'Failed'};
+      const doctorPresets=[
+        {l:'Cardiologists',q:'cardiologists who create content about heart health on TikTok and Instagram'},
+        {l:'GI Doctors',q:'gastroenterologists and GI doctors who talk about gut health on social media'},
+        {l:'Longevity MDs',q:'anti-aging and longevity doctors with social media presence'},
+        {l:'RDs & Dietitians',q:'registered dietitians who review supplements and talk about nutrition'},
+        {l:'Pharmacists',q:'pharmacists who review supplements on TikTok and YouTube'},
+        {l:'NPs & PAs',q:'nurse practitioners and physician assistants who create health content'},
+        {l:'Sleep Doctors',q:'sleep medicine doctors who create content about sleep health'},
+        {l:'Endocrinologists',q:'endocrinologists who discuss blood sugar and metabolic health on social media'},
+      ];
+      const presets = doctorMode ? doctorPresets : generalPresets;
+      const statusLabels={starting:'Starting search...',parsing_intent:'Understanding your query...',searching:'Searching across platforms...',analyzing:'Analyzing and scoring creators...',deep_searching:'Deep searching (LinkedIn, Reddit, agencies)...',complete:'Complete',failed:'Failed'};
 
-      const doSearch=async(q)=>{ if(!q.trim())return; setSearching(true);setError(null);setResults(null);setSearchStatus(null);clearInterval(pollRef.current);
-        try { const d=await api('/discover',{method:'POST',body:{query:q,platforms:['tiktok','instagram','youtube'],max_results:resultCount}}); setSearchStatus({status:'starting'});
+      const doSearch=async(q)=>{ if(!q.trim())return; setSearching(true);setError(null);setResults(null);setSearchStatus(null);setCredentialFilter('');clearInterval(pollRef.current);
+        try { const d=await api('/discover',{method:'POST',body:{query:q,platforms:['tiktok','instagram','youtube'],max_results:resultCount,search_mode:doctorMode?'doctor':'general'}}); setSearchStatus({status:'starting'});
           pollRef.current=setInterval(async()=>{ try { const st=await api(`/discover/${d.search_id}`); setSearchStatus(st);
             if(st.status==='complete'){clearInterval(pollRef.current);setResults(st);setSearching(false);api('/creators',{params:{per_page:500}}).then(d=>setExisting(d.creators||[])).catch(()=>{});}
             else if(st.status==='failed'){clearInterval(pollRef.current);setError(st.error||'Search failed');setSearching(false);} }catch(e){}},3000);
         }catch(e){setError(e.message);setSearching(false);}};
-      useEffect(()=>()=>{clearInterval(pollRef.current);clearInterval(batchPollRef.current);},[]);
+      useEffect(()=>()=>{clearInterval(pollRef.current);clearInterval(batchPollRef.current);clearInterval(deepPollRef.current);},[]);
+
+      const handleGoDeeper=async()=>{
+        if(!results?.search_id)return; setDeepSearching(true);setSearchStatus({status:'deep_searching'});
+        try {
+          await api(`/discover/${results.search_id}/go-deeper`,{method:'POST'});
+          deepPollRef.current=setInterval(async()=>{
+            try { const st=await api(`/discover/${results.search_id}`);setSearchStatus(st);
+              if(st.status==='complete'){clearInterval(deepPollRef.current);setResults(st);setDeepSearching(false);}
+              else if(st.status==='failed'){clearInterval(deepPollRef.current);setDeepSearching(false);setError(st.error||'Deep search failed');}
+            }catch(e){}
+          },3000);
+        }catch(e){setError(e.message);setDeepSearching(false);}
+      };
 
       const handleSAE=async(result)=>{ const saved=await api(`/discover/results/${result.id}/save-and-enrich`,{method:'POST'}); setSavedThisSession(prev=>new Set([...prev,result.id])); setResults(p=>p?{...p,results:p.results.map(r=>r.id===result.id?{...r,_saved:true,_enrichingCreatorId:saved.creator.id}:r)}:p); if(saved.creator)setExisting(p=>[...p,saved.creator]); return saved; };
 
@@ -559,9 +607,12 @@
         if (typeFilter) t = t.filter(r => (r.ai_analysis?.creator_type||'') === typeFilter || (r.categories||[]).some(c=>c.toLowerCase().includes(typeFilter.toLowerCase())));
         // Apply niche filter
         if (nicheFilter) t = t.filter(r => (r.ai_analysis?.content_niches||[]).includes(nicheFilter) || (r.categories||[]).some(c=>c.toLowerCase().includes(nicheFilter.toLowerCase())));
+        // Apply credential tier filter (doctor mode)
+        if (credentialFilter) t = t.filter(r => (r.ai_analysis?.credential_tier||r.raw_data?.credential_tier||'') === credentialFilter);
         return t.sort((a,b)=>a._isDup!==b._isDup?(a._isDup?1:-1):(b.relevance_score||0)-(a.relevance_score||0));
-      },[results,dedupSet,typeFilter,nicheFilter,savedThisSession]);
+      },[results,dedupSet,typeFilter,nicheFilter,credentialFilter,savedThisSession]);
       const newC=sorted.filter(r=>!r._isDup).length, dupC=sorted.filter(r=>r._isDup).length;
+      const hasDeepResults = results?.results?.some(r => r.ai_analysis?.source_layer === 'deep' || r.source_type === 'deep_search');
 
       return <div>
         {/* Hero */}
@@ -576,7 +627,7 @@
                 <div style={{display:'flex',gap:8,background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'4px 4px 4px 16px',alignItems:'center',boxShadow:'var(--shadow-md)',maxWidth:500}}>
                   <span style={{color:'var(--text-muted)',flexShrink:0}}>{I.search()}</span>
                   <input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==='Enter'&&doSearch(query)}
-                    placeholder="Search creators, niches, platforms..."
+                    placeholder={doctorMode?"Search by specialty, credential, topic...":"Search creators, niches, platforms..."}
                     style={{flex:1,border:'none',outline:'none',background:'transparent',fontSize:14,color:'var(--text)',padding:'10px 0',fontFamily:'var(--font-body)'}}/>
                   {query&&<button onClick={()=>setQuery('')} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-muted)',display:'flex'}}>{I.x()}</button>}
                   <select value={resultCount} onChange={e=>setResultCount(Number(e.target.value))} style={{padding:'6px 8px',background:'var(--bg-muted)',border:'1px solid var(--border-light)',borderRadius:'var(--radius-xs)',fontSize:12,fontFamily:'var(--font-mono)',color:'var(--text-secondary)',cursor:'pointer'}}>
@@ -585,6 +636,22 @@
                   <button onClick={()=>doSearch(query)} disabled={searching||!query.trim()} className="btn-terracotta" style={{borderRadius:'var(--radius-sm)'}}>
                     {searching?I.loader():I.sparkles()} {searching?'Searching...':'Discover'}
                   </button>
+                </div>
+
+                {/* Doctor Mode toggle */}
+                <div style={{display:'flex',alignItems:'center',gap:12,marginTop:12}}>
+                  <button onClick={()=>setDoctorMode(!doctorMode)} style={{
+                    display:'flex',alignItems:'center',gap:6,padding:'6px 14px',
+                    borderRadius:20,fontSize:12,fontWeight:600,cursor:'pointer',
+                    border: doctorMode ? '2px solid var(--terracotta)' : '1px solid var(--border)',
+                    background: doctorMode ? 'var(--terracotta)' : 'var(--bg-card)',
+                    color: doctorMode ? 'white' : 'var(--text-secondary)',
+                    transition:'all 0.2s ease',
+                  }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                    Doctor Mode {doctorMode ? 'ON' : 'OFF'}
+                  </button>
+                  {doctorMode && <span style={{fontSize:11,color:'var(--terracotta)',fontStyle:'italic'}}>Specialized search for medical professionals with content presence</span>}
                 </div>
               </div>
             </div>
@@ -600,10 +667,10 @@
           {error&&<div style={{padding:'12px 16px',background:'var(--red-light)',borderRadius:'var(--radius-xs)',color:'var(--red)',fontSize:13,marginBottom:16,marginTop:8}}>{error}</div>}
 
           {/* Progress */}
-          {searching&&searchStatus&&<div className="card-warm fade-up" style={{padding:'20px 24px',marginTop:12,marginBottom:16}}>
+          {(searching||deepSearching)&&searchStatus&&<div className="card-warm fade-up" style={{padding:'20px 24px',marginTop:12,marginBottom:16}}>
             <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>{I.loader()}<span style={{fontSize:14,fontWeight:500}}>{statusLabels[searchStatus.status]||searchStatus.status}</span></div>
-            <div style={{height:3,background:'var(--border)',borderRadius:2,overflow:'hidden'}}><div style={{height:'100%',background:'var(--terracotta)',borderRadius:2,transition:'width 0.8s ease',width:searchStatus.status==='parsing_intent'?'25%':searchStatus.status==='searching'?'55%':searchStatus.status==='analyzing'?'85%':'10%'}}/></div>
-            <div style={{fontSize:11,fontFamily:'var(--font-mono)',color:'var(--text-muted)',marginTop:6}}>Usually takes 1-2 minutes.</div>
+            <div style={{height:3,background:'var(--border)',borderRadius:2,overflow:'hidden'}}><div style={{height:'100%',background:'var(--terracotta)',borderRadius:2,transition:'width 0.8s ease',width:searchStatus.status==='parsing_intent'?'25%':searchStatus.status==='searching'?'55%':searchStatus.status==='analyzing'?'85%':searchStatus.status==='deep_searching'?'60%':'10%'}}/></div>
+            <div style={{fontSize:11,fontFamily:'var(--font-mono)',color:'var(--text-muted)',marginTop:6}}>{searchStatus.status==='deep_searching'?'Searching LinkedIn, Reddit, talent agencies... ~2 min.':'Usually takes 1-2 minutes.'}</div>
           </div>}
 
           {/* Results */}
@@ -622,9 +689,26 @@
                   <option value="">All Niches</option>
                   {CONTENT_NICHES.map(n=><option key={n} value={n}>{n}</option>)}
                 </select>
-                {(typeFilter||nicheFilter)&&<button onClick={()=>{setTypeFilter('');setNicheFilter('');}} style={{background:'none',border:'none',cursor:'pointer',color:'var(--terracotta)',fontSize:12,fontWeight:500}}>Clear</button>}
+                {doctorMode && <select value={credentialFilter} onChange={e=>setCredentialFilter(e.target.value)} style={{padding:'6px 10px',border:'1px solid var(--border)',borderRadius:'var(--radius-xs)',fontSize:12,background:'var(--bg-card)',color:credentialFilter?'var(--terracotta)':'var(--text-secondary)',cursor:'pointer',fontFamily:'var(--font-body)'}}>
+                  <option value="">All Credentials</option>
+                  <option value="physician">MD / DO</option>
+                  <option value="allied">NP / PA / RD / PharmD</option>
+                  <option value="other_medical">ND / Other Medical</option>
+                </select>}
+                {(typeFilter||nicheFilter||credentialFilter)&&<button onClick={()=>{setTypeFilter('');setNicheFilter('');setCredentialFilter('');}} style={{background:'none',border:'none',cursor:'pointer',color:'var(--terracotta)',fontSize:12,fontWeight:500}}>Clear</button>}
                 {newC>0&&!batchEnriching&&<button className="btn-terracotta" onClick={handleSaveAll} style={{fontSize:12,padding:'6px 14px'}}>{I.zap()} Save & Enrich All ({newC})</button>}
                 {batchEnriching&&<span style={{fontSize:12,color:'var(--terracotta)',display:'flex',alignItems:'center',gap:6}}>{I.loader()} Enriching all...</span>}
+                {doctorMode&&results&&!deepSearching&&!hasDeepResults&&<button onClick={handleGoDeeper} style={{
+                  display:'flex',alignItems:'center',gap:5,padding:'6px 14px',fontSize:12,fontWeight:600,
+                  borderRadius:'var(--radius-xs)',cursor:'pointer',
+                  border:'1px solid var(--terracotta)',background:'transparent',color:'var(--terracotta)',
+                  transition:'all 0.2s ease',
+                }} onMouseOver={e=>{e.target.style.background='var(--terracotta)';e.target.style.color='white';}} onMouseOut={e=>{e.target.style.background='transparent';e.target.style.color='var(--terracotta)';}}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M11 8v6"/><path d="M8 11h6"/></svg>
+                  Go Deeper
+                </button>}
+                {deepSearching&&<span style={{fontSize:12,color:'var(--terracotta)',display:'flex',alignItems:'center',gap:6}}>{I.loader()} Deep searching...</span>}
+                {hasDeepResults&&<Pill color="var(--terracotta)" bg="var(--terracotta-light)">Includes deep results</Pill>}
               </div>
               <div style={{display:'flex',alignItems:'center',gap:4,background:'var(--bg-muted)',borderRadius:'var(--radius-xs)',padding:3}}>
                 <button onClick={()=>setViewMode('grid')} style={{padding:6,borderRadius:4,border:'none',cursor:'pointer',background:viewMode==='grid'?'var(--bg-card)':'transparent',color:viewMode==='grid'?'var(--text)':'var(--text-muted)',display:'flex',boxShadow:viewMode==='grid'?'var(--shadow-sm)':'none'}}>{I.grid()}</button>
