@@ -177,8 +177,12 @@
       return <span className="pill" style={{color, background: bg, ...style}}>{children}</span>;
     }
 
-    function Avatar({name, size=40}) {
+    function Avatar({name, size=40, src}) {
       const initials = (name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+      const [imgError,setImgError] = useState(false);
+      if (src && !imgError) {
+        return <img src={src} alt={name} onError={()=>setImgError(true)} style={{width:size,height:size,borderRadius:'50%',objectFit:'cover',flexShrink:0,background:'var(--terracotta-light)'}}/>;
+      }
       return <div style={{ width:size, height:size, borderRadius:'50%', background:'var(--terracotta-light)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:size*0.35, fontWeight:700, color:'var(--terracotta)', flexShrink:0 }}>{initials}</div>;
     }
 
@@ -252,7 +256,7 @@
           <div style={{position:'relative',height:140,background:'linear-gradient(135deg, var(--terracotta-light) 0%, var(--peach) 50%, var(--sage-light) 100%)',flexShrink:0}}>
             <button onClick={()=>setSelected(null)} style={{position:'absolute',top:12,right:12,width:32,height:32,borderRadius:'50%',background:'rgba(255,255,255,0.8)',backdropFilter:'blur(8px)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text)'}}>{I.x()}</button>
             <div style={{position:'absolute',bottom:-28,left:24}}>
-              <div style={{border:'4px solid var(--bg-card)',borderRadius:'50%'}}><Avatar name={c.name} size={64}/></div>
+              <div style={{border:'4px solid var(--bg-card)',borderRadius:'50%'}}><Avatar name={c.name} size={64} src={ai.avatar_url || ai.apify_profile?.avatar_url}/></div>
             </div>
           </div>
 
@@ -411,10 +415,15 @@
         <div style={{padding:'0 16px 16px',cursor:'pointer'}}>
           {/* Avatar overlapping cover */}
           <div style={{display:'flex',alignItems:'flex-end',gap:10,marginTop:-20,marginBottom:10}}>
-            <div style={{border:'3px solid var(--bg-card)',borderRadius:'50%'}}><Avatar name={c.name} size={44}/></div>
+            <div style={{border:'3px solid var(--bg-card)',borderRadius:'50%'}}><Avatar name={c.name} size={44} src={ai.avatar_url || ai.apify_profile?.avatar_url}/></div>
             <div style={{flex:1,minWidth:0,paddingBottom:2}}>
               <div style={{fontWeight:600,fontSize:14,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.name}</div>
-              {platforms[0]?.h && <div style={{fontSize:11,color:'var(--text-muted)',fontFamily:'var(--font-mono)'}}>@{platforms[0].h.replace('@','')}</div>}
+              {platforms[0]?.h && (()=>{
+                const handle=platforms[0].h.replace('@','');
+                const pUrl=platforms[0].u || (platforms[0].n==='tiktok'?`https://www.tiktok.com/@${handle}`:platforms[0].n==='instagram'?`https://www.instagram.com/${handle}/`:platforms[0].n==='youtube'?`https://www.youtube.com/@${handle}`:null);
+                return pUrl ? <a href={pUrl} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()} style={{fontSize:11,color:'var(--terracotta)',fontFamily:'var(--font-mono)',textDecoration:'none'}}>@{handle} {I.ext()}</a>
+                  : <div style={{fontSize:11,color:'var(--text-muted)',fontFamily:'var(--font-mono)'}}>@{handle}</div>;
+              })()}
             </div>
           </div>
 
@@ -654,8 +663,9 @@
       if (c.youtube_handle) platforms.push({n:'youtube',h:c.youtube_handle,f:c.youtube_subscribers});
       if (platforms.length===0&&c.handle) platforms.push({n:c.platform||'unknown',h:c.handle,f:c.followers});
 
+      const listAi = c.ai_analysis||{};
       return <div className="card-warm" style={{display:'flex',alignItems:'center',gap:14,padding:'12px 16px',cursor:'pointer',opacity:isDuplicate?0.5:1}} onClick={()=>onSelect&&onSelect(c)}>
-        <Avatar name={c.name} size={40}/>
+        <Avatar name={c.name} size={40} src={listAi.avatar_url || listAi.apify_profile?.avatar_url}/>
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:2}}>
             <span style={{fontWeight:600,fontSize:14}}>{c.name}</span>
@@ -691,7 +701,10 @@
           <div style={{maxWidth:1200,margin:'0 auto',padding:'0 24px'}}>
             <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>{I.database(16)}<span style={{fontSize:13,fontWeight:600,color:'var(--sage)'}}>Creator Database</span></div>
             <h1 style={{fontFamily:'var(--font-display)',fontSize:36,color:'var(--text)',marginBottom:4}}>Your Creators</h1>
-            <p style={{color:'var(--text-secondary)',fontSize:14}}>{total} creators in your database</p>
+            <div style={{display:'flex',alignItems:'center',gap:12}}>
+              <p style={{color:'var(--text-secondary)',fontSize:14}}>{total} creators in your database</p>
+              <button className="btn-ghost" onClick={async()=>{if(!confirm('Delete all discovered/test creators?'))return;await api('/creators/bulk/discovered',{method:'DELETE'});load();}} style={{fontSize:11,padding:'4px 10px',color:'var(--red)'}}>Clear test data</button>
+            </div>
           </div>
         </div>
 

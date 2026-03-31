@@ -491,12 +491,13 @@ YOUR CORE JOB: Extract INDIVIDUAL PEOPLE from these search results who would rea
 
 CRITICAL — DATA QUALITY REQUIREMENTS:
 A creator is ONLY useful if we have ENOUGH information to actually reach out. Before scoring, check:
-- Do we have at least ONE social media handle or profile URL? If NO → score max 40, flag "No direct social handle found"
-- Do we have follower count on any platform? If NO → subtract 15 points from score
+- Do we have at least ONE social media handle or profile URL? If NO → score max 25, flag "No direct social handle found"
+- Do we have follower count on any platform? If NO → subtract 20 points from score
+- Do we have BOTH no handle AND no follower count? → score max 15, set recommended_action to "skip"
 - Do we have a way to contact them (email, DM, linktree)? If NO → subtract 10 points
 - Is the person clearly a real individual (not a brand, agency listing, or directory entry)? If NO → score 0, skip them
 
-DO NOT include people who are just LISTED on a talent directory or marketplace without any additional info. If all you know is "Name + talent agency URL", that's not enough — they score max 35.
+DO NOT include people who are just LISTED on a talent directory or marketplace without any additional info. If all you know is "Name + talent agency URL", that's not enough — score 0, skip them.
 
 CRITICAL BUSINESS CONTEXT — WHO IS AND ISN'T VIABLE:
 

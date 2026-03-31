@@ -11,7 +11,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_, and_, desc, asc
+from sqlalchemy import select, func, or_, and_, desc, asc, delete
 
 from app.core.database import get_db
 from app.models.models import (
@@ -210,6 +210,32 @@ async def delete_creator(creator_id: UUID, db: AsyncSession = Depends(get_db)):
     await db.delete(creator)
     await db.commit()
     return {"deleted": True}
+
+
+@router.delete("/creators/bulk/all")
+async def delete_all_creators(confirm: str = "no", db: AsyncSession = Depends(get_db)):
+    """Delete ALL creators. Requires confirm=yes query parameter."""
+    if confirm != "yes":
+        return {"error": "Pass ?confirm=yes to delete all creators"}
+    result = await db.execute(select(func.count(Creator.id)))
+    count = result.scalar() or 0
+    await db.execute(delete(Creator))
+    await db.commit()
+    return {"deleted": count, "message": f"Deleted {count} creators"}
+
+
+@router.delete("/creators/bulk/discovered")
+async def delete_discovered_creators(db: AsyncSession = Depends(get_db)):
+    """Delete all creators with pipeline_stage='discovered' (test/unvetted data)."""
+    result = await db.execute(
+        select(func.count(Creator.id)).where(Creator.pipeline_stage == "discovered")
+    )
+    count = result.scalar() or 0
+    await db.execute(
+        delete(Creator).where(Creator.pipeline_stage == "discovered")
+    )
+    await db.commit()
+    return {"deleted": count, "message": f"Deleted {count} discovered creators"}
 
 
 # ─── IMPORT ───
