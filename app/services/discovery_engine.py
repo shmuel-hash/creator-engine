@@ -1182,6 +1182,52 @@ class DiscoveryEngine:
                             cleaned[plat] = val  # Username is fine
                     rd["other_profiles"] = cleaned
 
+            # Step 5.5: Batch avatar scrape — get profile pictures before showing cards
+            try:
+                from app.services.apify_service import batch_scrape_avatars
+
+                # Collect handles + platforms from results
+                avatar_requests = []
+                for rd in final:
+                    handle = rd.get("handle")
+                    platform = rd.get("platform", "unknown")
+                    profile_url = rd.get("profile_url", "")
+
+                    # Detect platform from URL if needed
+                    if profile_url:
+                        if "tiktok.com" in profile_url:
+                            platform = "tiktok"
+                        elif "instagram.com" in profile_url:
+                            platform = "instagram"
+
+                    if handle:
+                        avatar_requests.append({"handle": handle, "platform": platform, "url": profile_url or ""})
+
+                if avatar_requests:
+                    logger.info(f"[Discovery] Batch avatar scrape for {len(avatar_requests)} creators")
+                    avatar_data = await batch_scrape_avatars(avatar_requests, timeout=45)
+
+                    # Merge avatar data back into results
+                    matched = 0
+                    for rd in final:
+                        handle = (rd.get("handle") or "").lstrip("@").strip().lower()
+                        if handle and handle in avatar_data:
+                            profile = avatar_data[handle]
+                            # Store avatar URL in the result for frontend to use
+                            rd["avatar_url"] = profile.get("avatar_url")
+                            # Update followers with real count if we got one
+                            real_followers = profile.get("followers")
+                            if real_followers and isinstance(real_followers, (int, float)) and real_followers > 0:
+                                rd["estimated_followers"] = int(real_followers)
+                            matched += 1
+
+                    logger.info(f"[Discovery] Matched avatars for {matched}/{len(avatar_requests)} creators")
+                else:
+                    logger.info("[Discovery] No handles to scrape avatars for")
+
+            except Exception as e:
+                logger.warning(f"[Discovery] Batch avatar scrape failed (non-fatal): {e}")
+
             # Step 6: Store results (filter out junk)
             stored_count = 0
             for result_data in final:
@@ -1223,6 +1269,7 @@ class DiscoveryEngine:
                         "estimated_rate": result_data.get("estimated_rate"),
                         "creator_type": result_data.get("creator_type"),
                         "content_niches": result_data.get("content_niches", []),
+                        "avatar_url": result_data.get("avatar_url"),
                     },
                     source_type=result_data.get("source", "web_search"),
                     source_url=result_data.get("source_urls", [None])[0] if result_data.get("source_urls") else None,

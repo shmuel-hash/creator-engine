@@ -9,6 +9,7 @@ Supports:
 Uses Apify's REST API to run actors and fetch results synchronously.
 """
 
+import asyncio
 import logging
 import httpx
 from typing import Optional
@@ -308,6 +309,122 @@ async def enrich_profile(handle: str, platform: str) -> Optional[dict]:
 
 async def check_apify_status() -> dict:
     """Check if Apify API is configured and working."""
+
+
+async def batch_scrape_avatars(handles: list[dict], timeout: int = 45) -> dict:
+    """
+    Batch-scrape profile pictures and real follower counts for discovery results.
+
+    Args:
+        handles: list of {"handle": "@username", "platform": "tiktok"|"instagram"}
+        timeout: max seconds for each platform batch
+
+    Returns:
+        dict mapping lowercase handle → {"avatar_url": ..., "followers": ..., "bio": ...}
+    """
+    if not settings.apify_api_token:
+        logger.info("[Apify] No API token — skipping batch avatar scrape")
+        return {}
+
+    # Group by platform
+    tiktok_handles = []
+    ig_handles = []
+    for h in handles:
+        clean = (h.get("handle") or "").lstrip("@").strip().lower()
+        if not clean:
+            continue
+        platform = (h.get("platform") or "").lower()
+        if platform == "tiktok":
+            tiktok_handles.append(clean)
+        elif platform in ("instagram", "ig"):
+            ig_handles.append(clean)
+        else:
+            # Guess from URL if available
+            url = (h.get("url") or "").lower()
+            if "tiktok.com" in url:
+                tiktok_handles.append(clean)
+            elif "instagram.com" in url:
+                ig_handles.append(clean)
+            else:
+                # Default: try TikTok (more common in discovery)
+                tiktok_handles.append(clean)
+
+    # Deduplicate
+    tiktok_handles = list(dict.fromkeys(tiktok_handles))
+    ig_handles = list(dict.fromkeys(ig_handles))
+
+    results = {}
+    tasks = []
+
+    if tiktok_handles:
+        logger.info(f"[Apify] Batch avatar scrape: {len(tiktok_handles)} TikTok profiles")
+        tasks.append(_batch_tiktok(tiktok_handles, timeout))
+
+    if ig_handles:
+        logger.info(f"[Apify] Batch avatar scrape: {len(ig_handles)} Instagram profiles")
+        tasks.append(_batch_instagram(ig_handles, timeout))
+
+    if not tasks:
+        return {}
+
+    try:
+        batch_results = await asyncio.wait_for(
+            asyncio.gather(*tasks, return_exceptions=True),
+            timeout=timeout + 10,
+        )
+        for batch in batch_results:
+            if isinstance(batch, dict):
+                results.update(batch)
+            elif isinstance(batch, Exception):
+                logger.error(f"[Apify] Batch avatar error: {batch}")
+    except asyncio.TimeoutError:
+        logger.warning("[Apify] Batch avatar scrape timed out — continuing without avatars")
+    except Exception as e:
+        logger.error(f"[Apify] Batch avatar scrape failed: {e}")
+
+    logger.info(f"[Apify] Batch avatar scrape got {len(results)} profiles")
+    return results
+
+
+async def _batch_tiktok(handles: list[str], timeout: int) -> dict:
+    """Scrape multiple TikTok profiles in one actor run."""
+    items = await _run_actor_sync(
+        TIKTOK_PROFILE_ACTOR,
+        {"profiles": handles, "resultsPerPage": 1, "profileScrapeSections": []},
+        timeout=timeout,
+    )
+    results = {}
+    for item in items:
+        author = item.get("authorMeta") or item
+        username = (author.get("name") or author.get("uniqueId") or "").lower()
+        if username:
+            results[username] = {
+                "avatar_url": author.get("avatar") or author.get("avatarLarger") or author.get("avatarMedium"),
+                "followers": author.get("fans") or author.get("followers") or author.get("followerCount"),
+                "bio": author.get("signature") or author.get("bio") or "",
+                "platform": "tiktok",
+            }
+    return results
+
+
+async def _batch_instagram(handles: list[str], timeout: int) -> dict:
+    """Scrape multiple Instagram profiles in one actor run."""
+    items = await _run_actor_sync(
+        INSTAGRAM_PROFILE_ACTOR,
+        {"usernames": handles},
+        timeout=timeout,
+    )
+    results = {}
+    for item in items:
+        username = (item.get("username") or "").lower()
+        if username:
+            results[username] = {
+                "avatar_url": item.get("profilePicUrl") or item.get("profilePicUrlHD") or item.get("profile_pic_url"),
+                "followers": item.get("followersCount") or item.get("follower_count") or item.get("followers"),
+                "bio": item.get("biography") or item.get("bio") or "",
+                "platform": "instagram",
+            }
+    return results
     token = settings.apify_api_token
     if not token:
         return {"configured": False, "error": "No APIFY_API_TOKEN set"}
