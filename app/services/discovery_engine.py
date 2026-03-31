@@ -485,80 +485,90 @@ class HashtagResearchProvider:
 # ─── AI ANALYZER ───
 
 ANALYZER_PROMPT = """You are analyzing raw web search results to extract individual creator/influencer profiles for Luma Nutrition.
-Luma is a DTC supplement brand selling: Heart Health Bundle, Gut Health Protocol, Longevity Protocol.
+Luma is a US-based DTC supplement brand selling: Heart Health Bundle, Gut Health Protocol, Longevity Protocol.
 
 YOUR CORE JOB: Extract INDIVIDUAL PEOPLE from these search results who would realistically partner with a DTC supplement brand at $200-$3,000 per deliverable.
 
+CRITICAL — DATA QUALITY REQUIREMENTS:
+A creator is ONLY useful if we have ENOUGH information to actually reach out. Before scoring, check:
+- Do we have at least ONE social media handle or profile URL? If NO → score max 40, flag "No direct social handle found"
+- Do we have follower count on any platform? If NO → subtract 15 points from score
+- Do we have a way to contact them (email, DM, linktree)? If NO → subtract 10 points
+- Is the person clearly a real individual (not a brand, agency listing, or directory entry)? If NO → score 0, skip them
+
+DO NOT include people who are just LISTED on a talent directory or marketplace without any additional info. If all you know is "Name + talent agency URL", that's not enough — they score max 35.
+
 CRITICAL BUSINESS CONTEXT — WHO IS AND ISN'T VIABLE:
 
-IDEAL CREATORS (score 70-100):
-- UGC creators who make content-for-hire ($200-$1000/video) — these are the #1 priority
-- Micro doctors (5K-300K followers) — real MDs/DOs/NPs who make health content and do brand deals
+IDEAL CREATORS (score 70-100, but only if data is complete):
+- UGC creators who make content-for-hire ($200-$1000/video) — must have portfolio or social handle
+- Micro doctors (5K-300K followers) — real MDs/DOs/NPs with visible social media presence
 - Niche wellness creators (10K-300K) who actively partner with supplement/health brands
 - Gen Z health creators building audiences, open to gifted/paid partnerships
 - Mom/parenting health creators who review products
-- Anyone with "business inquiries", "DM for collabs", "PR friendly" in their bio
 
-AUTOMATICALLY SCORE LOW (below 30) AND FLAG:
-- Celebrity doctors: Andrew Huberman, Peter Attia, Rhonda Patrick, Dr. Berg, Dr. Oz, Mark Hyman, Dr. Mike, Dr. Pimple Popper, or anyone clearly famous
-- Anyone with 1M+ followers — they're too expensive and won't respond to cold outreach
+AUTOMATICALLY SCORE LOW (below 30):
+- Celebrity doctors: Andrew Huberman, Peter Attia, Rhonda Patrick, Dr. Berg, Dr. Oz, Mark Hyman, Dr. Mike, or anyone clearly famous
+- Anyone with 1M+ followers
 - Major podcast hosts with millions of listeners
-- Creators who only work with Fortune 500 / pharma brands
-- Pure entertainment accounts (comedy, drama) that don't discuss health/wellness
-- Generic health news sites, hospitals, or institutional accounts (not individual creators)
+- Pure entertainment accounts that don't discuss health/wellness
+- Generic health news sites, hospitals, or institutional accounts
 
-SCORING SHOULD HEAVILY WEIGHT ACCESSIBILITY:
-- 90-100: Perfect — UGC creator or micro-influencer in health/wellness, visible contact info, does brand deals, 5K-200K followers, relevant credentials
-- 70-89: Strong — health/wellness creator 50K-500K, does partnerships, contactable, good content fit
-- 50-69: Maybe — right niche but unclear if accessible (no contact info, unclear if they do partnerships, 300K-800K followers)
-- 30-49: Unlikely — large following (500K-1M), no visible partnership signals, may be too expensive
-- Below 30: Skip — celebrity, 1M+ followers, institutional account, or completely wrong niche
+GEOGRAPHIC PRIORITY:
+- US-based creators are strongly preferred (Luma ships primarily in the US)
+- Canada, UK, Australia are acceptable but note the country
+- Other countries: score -10 and flag as "non-US creator"
+- Extract country/region whenever possible from bio, location, domain (.au = Australia, .uk = UK, etc.)
 
-For each person you identify, extract AS MUCH as possible:
+SCORING (data completeness is a HARD requirement):
+- 90-100: Has social handle + follower count + email/contact + relevant niche + partnership signals. Perfect fit.
+- 70-89: Has social handle + either followers or contact info + relevant niche. Strong fit.
+- 50-69: Has social handle but missing followers/contact. OR right niche but missing key data.
+- 30-49: Name only, no handle, or only found via directory listing. Needs more research.
+- Below 30: Celebrity, no useful data, wrong niche, or institutional.
+
+For each person you identify, extract:
 
 1. **Identity**: Full name, social handle(s), platform(s)
-2. **Profile URLs**: Actual links to their TikTok, Instagram, YouTube, Twitter, LinkedIn profiles
-3. **Contact**: Email addresses, business inquiry links, linktree/bio links, management/agency
+2. **Profile URLs**: Actual links to TikTok, Instagram, YouTube, Twitter, LinkedIn
+3. **Contact**: Email, business inquiry links, linktree, management/agency
 4. **Credentials**: MD, DO, NP, RD, PhD, certified trainer, etc.
 5. **Content focus**: What topics they create about
-6. **Audience signals**: Follower counts, subscriber counts (extract numbers from text)
-7. **Brand partnerships**: Any brands mentioned they work with — especially DTC/supplement brands
-8. **Partnership signals**: "business inquiries", "PR friendly", "DM for collabs", "brand ambassador", UGC in bio
-9. **Estimated rate**: If you can guess based on follower count (micro: $200-$800, mid: $800-$3000, macro: $3000+)
+6. **Audience signals**: Follower counts (extract from text like "500K followers" → 500000)
+7. **Brand partnerships**: Brands they work with — especially DTC/supplement brands
+8. **Partnership signals**: "business inquiries", "PR friendly", "DM for collabs", UGC in bio
+9. **Country/Region**: Where they're based (extract from bio, location, URL domains)
+10. **Estimated rate**: Based on follower count (micro: $200-$800, mid: $800-$3000)
 
-IMPORTANT:
-- Look at URLs in search results — extract handles from profile URLs
-- Look for emails in snippets
-- If a list article mentions multiple people, create separate entries for each
-- Extract follower counts from text like "500K followers" → 500000
-- If you see "collab" "partnership" "sponsored by" — note the brand
-- ALWAYS include source_urls
-- In "content_fit_reasoning", explain WHY they'd work with Luma specifically — don't just say "good fit", say "does supplement reviews for mid-tier brands, has done partnerships with similar products, price range likely $500-$1000"
-
-Return a JSON array of analyzed profiles:
+Return a JSON array:
 [
   {
     "name": "Dr. Jane Smith",
     "handle": "@drjanesmith",
     "platform": "tiktok",
     "profile_url": "https://tiktok.com/@drjanesmith",
-    "other_profiles": {"instagram": "@drjanesmith", "youtube": "DrJaneSmith"},
+    "other_profiles": {"instagram": "@drjanesmith"},
     "bio": "Family medicine doc sharing heart health tips...",
     "email": "jane@drjanesmith.com",
     "estimated_followers": 45000,
     "estimated_engagement_rate": null,
     "categories": ["Doctor", "Family Medicine", "Heart Health"],
     "credentials": ["MD"],
-    "past_partnerships": ["Brand X supplement", "Brand Y vitamins"],
+    "past_partnerships": ["Brand X supplement"],
+    "country": "US",
     "relevance_score": 85,
-    "content_fit_reasoning": "Micro-doctor with 45K followers who reviews supplements. Has done paid partnerships with 2 other supplement brands. Likely rate: $500-$800 per video. Perfect for Luma Heart Health Bundle.",
+    "content_fit_reasoning": "Micro-doctor with 45K TikTok followers who reviews supplements. Has done paid partnerships with 2 supplement brands. Likely rate: $500-$800/video. Perfect for Luma Heart Health.",
     "red_flags": [],
     "recommended_action": "save",
-    "source_urls": ["url where this info was found"]
+    "source_urls": ["url where found"]
   }
 ]
 
-Be AGGRESSIVE about extraction but STRATEGIC about scoring. We want the hidden gems — the 30K follower doctor who'd love a $500 partnership, not the 5M follower celebrity who won't return our email.
+IMPORTANT RULES:
+- If you can't find a social handle or profile URL, set recommended_action to "skip" unless they have exceptional credentials
+- Don't pad the list with low-quality entries — 8 solid creators with handles > 20 names from talent directories
+- In content_fit_reasoning, be specific about WHY and include estimated rate
+- Always extract country when possible
 
 Return ONLY the JSON array, no other text."""
 
@@ -816,8 +826,15 @@ class DiscoveryEngine:
 
             logger.info(f"[Discovery] Contact enrichment done — {sum(1 for c in final if c.get('email'))} have emails")
 
-            # Step 6: Store results
+            # Step 6: Store results (filter out junk first)
+            stored_count = 0
             for result_data in final:
+                # Skip results with recommended_action = "skip" or score below 25
+                if result_data.get("recommended_action") == "skip":
+                    continue
+                if (result_data.get("relevance_score") or 0) < 25:
+                    continue
+
                 result = DiscoveryResult(
                     search_id=search.id,
                     name=result_data.get("name", "Unknown"),
@@ -838,15 +855,18 @@ class DiscoveryEngine:
                         "other_profiles": result_data.get("other_profiles", {}),
                         "past_partnerships": result_data.get("past_partnerships", []),
                         "source_urls": result_data.get("source_urls", []),
+                        "country": result_data.get("country"),
+                        "estimated_rate": result_data.get("estimated_rate"),
                     },
                     source_type=result_data.get("source", "web_search"),
                     source_url=result_data.get("source_urls", [None])[0] if result_data.get("source_urls") else None,
                     raw_data=result_data,
                 )
                 db.add(result)
+                stored_count += 1
 
             # Update search record
-            search.results_count = len(final)
+            search.results_count = stored_count
             search.status = "complete"
             search.completed_at = datetime.utcnow()
             await db.commit()

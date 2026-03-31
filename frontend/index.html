@@ -263,6 +263,7 @@
 
             {/* Tags row */}
             <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:16}}>
+              {ai.country && <Pill color="var(--text-secondary)" bg="var(--bg-muted)">{I.mapPin()} {ai.country}</Pill>}
               {c.pipeline_stage && <Pill color="var(--text-secondary)" bg="var(--bg-muted)">{c.pipeline_stage}</Pill>}
               {c.quality_tier && <Pill color="var(--sage)" bg="var(--sage-light)">{c.quality_tier}</Pill>}
               {creds.map((cr,i)=><Pill key={i} color="var(--blue)" bg="var(--blue-light)">{I.award()} {cr}</Pill>)}
@@ -407,7 +408,9 @@
           {/* Credentials + categories */}
           <div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:8}}>
             {creds.slice(0,2).map((cr,i)=><Pill key={i} color="var(--blue)" bg="var(--blue-light)" style={{fontSize:10}}>{cr}</Pill>)}
+            {ai.country && <Pill style={{fontSize:10}}>{ai.country}</Pill>}
             {c.categories?.slice(0,2).map(cat=><Pill key={cat} style={{fontSize:10}}>{cat}</Pill>)}
+            {!platforms.length && !c.handle && <Pill color="var(--red)" bg="var(--red-light)" style={{fontSize:10}}>{I.alert()} No social found</Pill>}
           </div>
 
           {/* Stats row */}
