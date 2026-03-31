@@ -388,7 +388,7 @@ async def enrich_creator(
     """
     cid = str(creator.id)
     _update_status(cid,
-        status="scraping_profile", step=1, total_steps=3,
+        status="scraping_profile", step=1, total_steps=2,
         step_label="Pulling real profile data...",
         started_at=datetime.utcnow().isoformat(),
     )
@@ -511,19 +511,6 @@ async def enrich_creator(
     else:
         enrichment["email_search"] = {"skipped": True, "reason": "email already exists"}
 
-    # Step 3: Analyze content & partnerships
-    _update_status(cid,
-        status="analyzing_content", step=3,
-        step_label="Analyzing content & partnerships...",
-    )
-    logger.info(f"[Enrich] Analyzing content for {handle}...")
-    content_analysis = await analyze_creator_content(
-        handle=handle,
-        platform=platform,
-        profile_url=profile_url,
-    )
-    enrichment["content_analysis"] = content_analysis
-
     # Update creator record
     if not creator.ai_analysis:
         creator.ai_analysis = {}
@@ -558,11 +545,11 @@ async def enrich_creator(
             await db.refresh(creator)
         except Exception:
             await db.rollback()
-            _update_status(cid, status="failed", step=3, step_label="Database error", error=str(commit_err))
+            _update_status(cid, status="failed", step=2, step_label="Database error", error=str(commit_err))
             raise
 
     _update_status(cid,
-        status="complete", step=3,
+        status="complete", step=2,
         step_label="Enrichment complete",
         completed_at=datetime.utcnow().isoformat(),
         result=enrichment,

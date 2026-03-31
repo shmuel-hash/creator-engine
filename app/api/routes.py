@@ -467,7 +467,6 @@ async def save_discovery_result(result_id: UUID, db: AsyncSession = Depends(get_
 async def save_and_enrich_discovery_result(result_id: UUID, db: AsyncSession = Depends(get_db)):
     """
     Save a discovery result as a creator AND immediately start enrichment.
-    One-click: discover → save → find email → analyze content → generate strategy.
     """
     import asyncio
     from app.services.enrichment_service import enrich_creator, _update_status
@@ -483,6 +482,56 @@ async def save_and_enrich_discovery_result(result_id: UUID, db: AsyncSession = D
         "creator": CreatorResponse.model_validate(creator).model_dump(),
         "enrichment_status": "started",
         "message": "Creator saved. Enrichment running — poll /creators/{id}/enrich/status for progress.",
+    }
+
+
+@router.post("/discover/{search_id}/save-and-enrich-all")
+async def save_and_enrich_all(search_id: UUID, db: AsyncSession = Depends(get_db)):
+    """
+    Save ALL unsaved discovery results from a search and start enrichment on each.
+    Returns list of saved creator IDs for polling.
+    """
+    import asyncio
+
+    search = await db.get(DiscoverySearch, search_id)
+    if not search:
+        raise HTTPException(status_code=404, detail="Search not found")
+
+    # Get all unsaved results
+    result = await db.execute(
+        select(DiscoveryResult)
+        .where(
+            DiscoveryResult.search_id == search.id,
+            DiscoveryResult.creator_id.is_(None),  # Not yet saved
+        )
+        .order_by(desc(DiscoveryResult.relevance_score))
+    )
+    unsaved = result.scalars().all()
+
+    if not unsaved:
+        return {"saved": 0, "creators": [], "message": "All results already saved"}
+
+    engine = DiscoveryEngine()
+    saved_creators = []
+
+    for dr in unsaved:
+        try:
+            creator = await engine.save_result_as_creator(dr.id, db)
+            saved_creators.append({
+                "id": str(creator.id),
+                "name": creator.name,
+                "discovery_result_id": str(dr.id),
+            })
+            # Start enrichment in background
+            asyncio.create_task(_background_enrich(creator.id))
+        except Exception as e:
+            logger.warning(f"[Batch] Failed to save result {dr.id}: {e}")
+            continue
+
+    return {
+        "saved": len(saved_creators),
+        "creators": saved_creators,
+        "message": f"Saved {len(saved_creators)} creators. Enrichment running on all.",
     }
 
 
