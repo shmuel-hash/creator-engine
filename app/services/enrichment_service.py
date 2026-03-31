@@ -388,8 +388,8 @@ async def enrich_creator(
     """
     cid = str(creator.id)
     _update_status(cid,
-        status="finding_email", step=1, total_steps=3,
-        step_label="Finding email...",
+        status="scraping_profile", step=1, total_steps=4,
+        step_label="Pulling real profile data...",
         started_at=datetime.utcnow().isoformat(),
     )
 
@@ -421,8 +421,60 @@ async def enrich_creator(
         "enriched_at": datetime.utcnow().isoformat(),
     }
 
-    # Step 1: Find email
+    # Step 0: Apify profile scrape — get real follower counts, bio, avatar, email
+    _update_status(cid,
+        status="scraping_profile", step=1,
+        step_label="Pulling real profile data...",
+    )
+    try:
+        from app.services.apify_service import enrich_profile
+        apify_profile = await enrich_profile(handle, platform)
+        if apify_profile:
+            logger.info(f"[Enrich] Apify returned profile for {handle}: {apify_profile.get('followers')} followers")
+            enrichment["apify_profile"] = apify_profile
+
+            # Update creator with real data from Apify
+            if apify_profile.get("followers") and (not creator.total_followers or creator.total_followers == 0):
+                creator.total_followers = apify_profile["followers"]
+            if apify_profile.get("bio") and not creator.bio:
+                creator.bio = apify_profile["bio"]
+
+            # Update platform-specific follower counts
+            if platform == "tiktok" and apify_profile.get("followers"):
+                creator.tiktok_followers = apify_profile["followers"]
+            elif platform == "instagram" and apify_profile.get("followers"):
+                creator.instagram_followers = apify_profile["followers"]
+
+            # Get email from Apify if available
+            if apify_profile.get("email") and not creator.email:
+                creator.email = apify_profile["email"]
+
+            # Get avatar URL
+            if apify_profile.get("avatar_url"):
+                if not creator.ai_analysis:
+                    creator.ai_analysis = {}
+                existing_ai = creator.ai_analysis if isinstance(creator.ai_analysis, dict) else {}
+                existing_ai["avatar_url"] = apify_profile["avatar_url"]
+                creator.ai_analysis = existing_ai
+
+            # Get website/bio link
+            if apify_profile.get("website") or apify_profile.get("bio_link"):
+                if not creator.ai_analysis:
+                    creator.ai_analysis = {}
+                existing_ai = creator.ai_analysis if isinstance(creator.ai_analysis, dict) else {}
+                existing_ai["website"] = apify_profile.get("website") or apify_profile.get("bio_link")
+                creator.ai_analysis = existing_ai
+        else:
+            logger.info(f"[Enrich] No Apify data for {handle} — continuing with web search")
+    except Exception as e:
+        logger.warning(f"[Enrich] Apify enrichment failed for {handle}: {e}")
+
+    # Step 2: Find email (if not already found via Apify)
     if not creator.email:
+        _update_status(cid,
+            status="finding_email", step=2,
+            step_label="Searching for email...",
+        )
         logger.info(f"[Enrich] Finding email for {handle}...")
         email_result = await find_creator_email(
             handle=handle,
@@ -459,9 +511,9 @@ async def enrich_creator(
     else:
         enrichment["email_search"] = {"skipped": True, "reason": "email already exists"}
 
-    # Step 2: Analyze content & partnerships
+    # Step 3: Analyze content & partnerships
     _update_status(cid,
-        status="analyzing_content", step=2,
+        status="analyzing_content", step=3,
         step_label="Analyzing content & partnerships...",
     )
     logger.info(f"[Enrich] Analyzing content for {handle}...")
@@ -472,9 +524,9 @@ async def enrich_creator(
     )
     enrichment["content_analysis"] = content_analysis
 
-    # Step 3: Generate outreach strategy
+    # Step 4: Generate outreach strategy
     _update_status(cid,
-        status="generating_strategy", step=3,
+        status="generating_strategy", step=4,
         step_label="Generating outreach strategy...",
     )
     logger.info(f"[Enrich] Generating outreach strategy for {handle}...")
@@ -531,11 +583,11 @@ async def enrich_creator(
             await db.refresh(creator)
         except Exception:
             await db.rollback()
-            _update_status(cid, status="failed", step=3, step_label="Database error", error=str(commit_err))
+            _update_status(cid, status="failed", step=4, step_label="Database error", error=str(commit_err))
             raise
 
     _update_status(cid,
-        status="complete", step=3,
+        status="complete", step=4,
         step_label="Enrichment complete",
         completed_at=datetime.utcnow().isoformat(),
         result=enrichment,

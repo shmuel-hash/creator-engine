@@ -715,6 +715,13 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
 
 # ─── ENRICHMENT & OUTREACH STRATEGY ───
 
+@router.get("/apify/status")
+async def apify_status():
+    """Check Apify integration status."""
+    from app.services.apify_service import check_apify_status
+    return await check_apify_status()
+
+
 @router.post("/creators/{creator_id}/enrich")
 async def enrich_creator_endpoint(creator_id: UUID, db: AsyncSession = Depends(get_db)):
     """

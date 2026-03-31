@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     # ClickUp
     clickup_api_token: str = ""
 
+    # Apify
+    apify_api_token: str = ""
+
     # App
     app_secret_key: str = "change-this"
     cors_origins: str = "http://localhost:3000,http://localhost:5173,https://*.up.railway.app"
