@@ -20,6 +20,7 @@ from datetime import datetime
 import httpx
 from anthropic import AsyncAnthropic
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.models.models import Creator, CreatorNote
