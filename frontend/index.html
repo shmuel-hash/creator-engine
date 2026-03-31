@@ -13,12 +13,12 @@
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
     :root {
-      /* Light mode */
       --bg: #f8f7f4;
       --bg-card: #ffffff;
       --bg-card-hover: #fafaf8;
       --bg-input: #ffffff;
       --bg-sidebar: #f1f0ec;
+      --bg-inset: #f3f2ee;
       --border: #e8e6e1;
       --border-light: #f0eeea;
       --text-primary: #1a1a18;
@@ -35,6 +35,8 @@
       --red-light: #fae6e6;
       --blue: #4b7dc4;
       --blue-light: #e6eef8;
+      --purple: #7c5dc4;
+      --purple-light: #f0ebf8;
       --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
       --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
       --shadow-lg: 0 8px 24px rgba(0,0,0,0.08);
@@ -50,6 +52,7 @@
       --bg-card-hover: #252523;
       --bg-input: #1e1e1c;
       --bg-sidebar: #1a1a18;
+      --bg-inset: #181816;
       --border: #2e2e2a;
       --border-light: #252523;
       --text-primary: #e8e6e1;
@@ -66,6 +69,8 @@
       --red-light: #2a1a1a;
       --blue: #6b9de0;
       --blue-light: #1a2230;
+      --purple: #9b7de0;
+      --purple-light: #221a2a;
       --shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
       --shadow-md: 0 4px 12px rgba(0,0,0,0.3);
       --shadow-lg: 0 8px 24px rgba(0,0,0,0.4);
@@ -81,34 +86,31 @@
     }
 
     #root { min-height: 100vh; }
-
     input, textarea, select, button { font-family: inherit; }
 
-    /* Scrollbar */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
 
-    /* Animations */
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
     @keyframes spin { to { transform: rotate(360deg); } }
-    @keyframes slideDown { from { opacity: 0; max-height: 0; } to { opacity: 1; max-height: 2000px; } }
 
     .fade-in { animation: fadeIn 0.3s ease forwards; }
     .pulse { animation: pulse 1.5s ease-in-out infinite; }
+
+    .btn-primary:hover { filter: brightness(0.9); }
+    .btn-ghost:hover { background: var(--bg-inset) !important; border-color: var(--accent) !important; color: var(--accent) !important; }
   </style>
 </head>
 <body>
   <div id="root"></div>
   <script type="text/babel">
-    const { useState, useEffect, useCallback, useRef } = React;
+    const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
-    // ─── CONFIG ───
     const API = 'https://creator-engine-production.up.railway.app/api';
 
-    // ─── API HELPERS ───
     async function api(path, opts = {}) {
       const { method = 'GET', body, params } = opts;
       let url = `${API}${path}`;
@@ -132,7 +134,7 @@
       return res.json();
     }
 
-    // ─── ICONS (inline SVG) ───
+    // ─── ICONS ───
     const Icons = {
       search: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>,
       moon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>,
@@ -141,7 +143,6 @@
       compass: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>,
       upload: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
       chevDown: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>,
-      chevRight: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>,
       mail: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>,
       star: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
       zap: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
@@ -149,11 +150,14 @@
       x: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>,
       loader: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{animation:'spin 1s linear infinite'}}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>,
       ext: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/></svg>,
-      filter: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>,
       clipboard: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>,
+      award: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>,
+      alertCircle: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>,
+      link: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>,
+      database: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>,
     };
 
-    // ─── THEME TOGGLE ───
+    // ─── SMALL COMPONENTS ───
     function ThemeToggle({ dark, onToggle }) {
       return (
         <button onClick={onToggle} style={{
@@ -168,7 +172,6 @@
       );
     }
 
-    // ─── PILL / BADGE ───
     function Pill({ children, color = 'var(--text-tertiary)', bg = 'var(--border-light)', style = {} }) {
       return (
         <span style={{
@@ -189,7 +192,7 @@
         'D': { color: 'var(--red)', bg: 'var(--red-light)' },
       };
       const s = map[tier] || { color: 'var(--text-tertiary)', bg: 'var(--border-light)' };
-      return <Pill color={s.color} bg={s.bg}>{tier || 'Unrated'}</Pill>;
+      return <Pill color={s.color} bg={s.bg}>{tier || 'New'}</Pill>;
     }
 
     function PriorityBadge({ level }) {
@@ -202,22 +205,18 @@
       return <Pill color={s.color} bg={s.bg}>{s.label}</Pill>;
     }
 
-    // ─── STAT BOX ───
-    function StatBox({ label, value, sub }) {
+    function StatBox({ label, value }) {
       return (
         <div style={{
           padding: '16px 20px', background: 'var(--bg-card)',
-          border: '1px solid var(--border)', borderRadius: 'var(--radius)',
-          minWidth: 140,
+          border: '1px solid var(--border)', borderRadius: 'var(--radius)', minWidth: 130,
         }}>
           <div style={{ fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{label}</div>
-          <div style={{ fontSize: 28, fontWeight: 600, lineHeight: 1.1 }}>{value}</div>
-          {sub && <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>{sub}</div>}
+          <div style={{ fontSize: 26, fontWeight: 600, lineHeight: 1.1 }}>{value}</div>
         </div>
       );
     }
 
-    // ─── FORMAT HELPERS ───
     function fmtNum(n) {
       if (!n && n !== 0) return '—';
       if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
@@ -225,14 +224,69 @@
       return n.toLocaleString();
     }
 
-    function platformIcon(p) {
-      const colors = { tiktok: '#000', instagram: '#E1306C', youtube: '#FF0000', twitter: '#1DA1F2' };
-      return <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: colors[p] || 'var(--text-secondary)' }}>
-        {p === 'tiktok' ? 'TT' : p === 'instagram' ? 'IG' : p === 'youtube' ? 'YT' : p === 'twitter' ? 'X' : p?.toUpperCase?.()?.slice(0,2) || ''}
-      </span>;
+    const PLATFORM_META = {
+      tiktok: { abbr: 'TT', color: '#000', label: 'TikTok' },
+      instagram: { abbr: 'IG', color: '#E1306C', label: 'Instagram' },
+      youtube: { abbr: 'YT', color: '#FF0000', label: 'YouTube' },
+      twitter: { abbr: 'X', color: '#1DA1F2', label: 'X/Twitter' },
+      linkedin: { abbr: 'LI', color: '#0A66C2', label: 'LinkedIn' },
+      reddit: { abbr: 'RD', color: '#FF4500', label: 'Reddit' },
+    };
+
+    function PlatformTag({ platform, handle, followers, url }) {
+      const meta = PLATFORM_META[platform] || { abbr: (platform || '??').slice(0,2).toUpperCase(), color: 'var(--text-secondary)', label: platform };
+      const inner = (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+          <span style={{ color: meta.color, fontWeight: 600 }}>{meta.abbr}</span>
+          {handle ? `@${handle.replace('@','')}` : ''}
+          {followers ? <span style={{ color: 'var(--text-tertiary)' }}>({fmtNum(followers)})</span> : ''}
+        </span>
+      );
+      if (url) return <a href={url} target="_blank" rel="noopener" style={{ textDecoration: 'none' }}>{inner}</a>;
+      return inner;
     }
 
-    // ─── ENRICHMENT PROGRESS BAR ───
+    function ScoreRing({ score, size = 40 }) {
+      const pct = Math.min(100, Math.max(0, score || 0));
+      const color = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--yellow)' : 'var(--text-tertiary)';
+      const r = (size - 6) / 2;
+      const circ = 2 * Math.PI * r;
+      const offset = circ * (1 - pct / 100);
+      return (
+        <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+          <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+            <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--border)" strokeWidth="3" />
+            <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth="3"
+              strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
+              style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
+          </svg>
+          <span style={{
+            position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: size * 0.32, fontWeight: 700, fontFamily: 'var(--font-mono)', color,
+          }}>{Math.round(score)}</span>
+        </div>
+      );
+    }
+
+    function EmailQuality({ email }) {
+      if (!email) return null;
+      const domain = email.split('@')[1]?.toLowerCase() || '';
+      const isGeneric = ['gmail.com','yahoo.com','hotmail.com','outlook.com','aol.com','icloud.com','mail.com','protonmail.com'].includes(domain);
+      const isAgent = domain.includes('manager') || domain.includes('talent') || domain.includes('agency') || email.includes('mgmt') || email.includes('booking');
+
+      let label, pillColor, pillBg;
+      if (isAgent) { label = 'Agent/Mgmt'; pillColor = 'var(--purple)'; pillBg = 'var(--purple-light)'; }
+      else if (!isGeneric) { label = 'Personal Domain'; pillColor = 'var(--green)'; pillBg = 'var(--green-light)'; }
+      else { label = 'Generic'; pillColor = 'var(--text-tertiary)'; pillBg = 'var(--border-light)'; }
+
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+          {Icons.mail} {email} <Pill color={pillColor} bg={pillBg} style={{ fontSize: 10 }}>{label}</Pill>
+        </span>
+      );
+    }
+
+    // ─── ENRICHMENT PROGRESS ───
     function EnrichmentProgress({ creatorId, onComplete }) {
       const [status, setStatus] = useState(null);
       const intervalRef = useRef(null);
@@ -245,7 +299,7 @@
             setStatus(s);
             if (s.status === 'complete' || s.status === 'failed') {
               clearInterval(intervalRef.current);
-              if (s.status === 'complete' && onComplete) onComplete();
+              if (s.status === 'complete' && onComplete) onComplete(creatorId);
             }
           } catch (e) { /* ignore */ }
         };
@@ -255,7 +309,6 @@
       }, [creatorId]);
 
       if (!status || status.status === 'not_started') return null;
-
       const pct = status.status === 'complete' ? 100 : ((status.step || 0) / (status.total_steps || 3)) * 100;
       const isRunning = !['complete', 'failed', 'not_started'].includes(status.status);
 
@@ -268,15 +321,10 @@
               {status.status === 'failed' && <span style={{ color: 'var(--red)' }}>{Icons.x}</span>}
               {status.step_label || status.status}
             </span>
-            <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)' }}>
-              {status.step}/{status.total_steps}
-            </span>
+            <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)' }}>{status.step}/{status.total_steps}</span>
           </div>
           <div style={{ height: 3, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
-            <div style={{
-              height: '100%', background: status.status === 'failed' ? 'var(--red)' : 'var(--accent)',
-              borderRadius: 2, width: `${pct}%`, transition: 'width 0.5s ease',
-            }} />
+            <div style={{ height: '100%', background: status.status === 'failed' ? 'var(--red)' : 'var(--accent)', borderRadius: 2, width: `${pct}%`, transition: 'width 0.5s ease' }} />
           </div>
           {status.error && <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 6 }}>{status.error}</div>}
         </div>
@@ -299,87 +347,63 @@
       }, [creatorId, strategy]);
 
       const copyText = (text, label) => {
-        navigator.clipboard.writeText(text).then(() => {
-          setCopied(label);
-          setTimeout(() => setCopied(null), 2000);
-        });
+        navigator.clipboard.writeText(text).then(() => { setCopied(label); setTimeout(() => setCopied(null), 2000); });
       };
 
       if (loading) return <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-tertiary)' }}>{Icons.loader} Loading strategy...</div>;
-      if (!data) return <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13 }}>No strategy yet — click Enrich to generate one.</div>;
+      if (!data) return null;
 
       const Section = ({ title, children, icon }) => (
         <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
-            {icon} {title}
-          </div>
+          <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>{icon} {title}</div>
           <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--text-secondary)' }}>{children}</div>
         </div>
       );
 
       return (
-        <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-          {/* Header stats row */}
+        <div className="fade-in">
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
             {data.recommended_product && <Pill color="var(--accent)" bg="var(--accent-light)">{data.recommended_product}</Pill>}
             {data.brand_fit_score && <Pill color="var(--green)" bg="var(--green-light)">{Icons.star} Fit: {data.brand_fit_score}/10</Pill>}
             {data.priority_level && <PriorityBadge level={data.priority_level} />}
             {data.estimated_rate_range && <Pill>{data.estimated_rate_range}</Pill>}
           </div>
-
           <Section title="Summary" icon={Icons.users}>{data.creator_summary}</Section>
-          <Section title="Brand Fit" icon={Icons.star}>{data.brand_fit_reasoning}</Section>
-          <Section title="Outreach Angle" icon={Icons.zap}>{data.outreach_angle}</Section>
-
+          {data.outreach_angle && <Section title="Outreach Angle" icon={Icons.zap}>{data.outreach_angle}</Section>}
           {data.personalization_hooks?.length > 0 && (
             <Section title="Personalization Hooks" icon={Icons.check}>
-              <ul style={{ paddingLeft: 16, margin: 0 }}>
-                {data.personalization_hooks.map((h, i) => <li key={i} style={{ marginBottom: 4 }}>{h}</li>)}
-              </ul>
+              <ul style={{ paddingLeft: 16, margin: 0 }}>{data.personalization_hooks.map((h, i) => <li key={i} style={{ marginBottom: 4 }}>{h}</li>)}</ul>
             </Section>
           )}
-
           {data.content_ideas?.length > 0 && (
             <Section title="Content Ideas" icon={Icons.compass}>
-              <ul style={{ paddingLeft: 16, margin: 0 }}>
-                {data.content_ideas.map((c, i) => <li key={i} style={{ marginBottom: 4 }}>{c}</li>)}
-              </ul>
+              <ul style={{ paddingLeft: 16, margin: 0 }}>{data.content_ideas.map((c, i) => <li key={i} style={{ marginBottom: 4 }}>{c}</li>)}</ul>
             </Section>
           )}
-
-          {/* Draft Email */}
           {data.suggested_email_body && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 5 }}>
-                  {Icons.mail} Draft Email
-                </div>
+                <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 5 }}>{Icons.mail} Draft Email</div>
                 <button onClick={() => copyText(`Subject: ${data.suggested_subject_line}\n\n${data.suggested_email_body}`, 'email')} style={{
                   display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px',
                   background: 'none', border: '1px solid var(--border)', borderRadius: 4,
                   cursor: 'pointer', fontSize: 11, color: copied === 'email' ? 'var(--green)' : 'var(--text-secondary)',
-                }}>
-                  {copied === 'email' ? Icons.check : Icons.clipboard} {copied === 'email' ? 'Copied' : 'Copy'}
-                </button>
+                }}>{copied === 'email' ? Icons.check : Icons.clipboard} {copied === 'email' ? 'Copied' : 'Copy'}</button>
               </div>
-              <div style={{
-                padding: 12, background: 'var(--bg)', borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--border)', fontSize: 12, fontFamily: 'var(--font-mono)',
-                lineHeight: 1.7, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap',
-              }}>
-                <div style={{ fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>
-                  Subject: {data.suggested_subject_line}
-                </div>
+              <div style={{ padding: 12, background: 'var(--bg)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: 12, fontFamily: 'var(--font-mono)', lineHeight: 1.7, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>
+                <div style={{ fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>Subject: {data.suggested_subject_line}</div>
                 {data.suggested_email_body}
               </div>
             </div>
           )}
-
           {data.red_flags?.length > 0 && (
-            <Section title="Red Flags" icon={Icons.x}>
-              <ul style={{ paddingLeft: 16, margin: 0 }}>
-                {data.red_flags.map((f, i) => <li key={i} style={{ marginBottom: 4, color: 'var(--red)' }}>{f}</li>)}
-              </ul>
+            <Section title="Red Flags" icon={Icons.alertCircle}>
+              <ul style={{ paddingLeft: 16, margin: 0 }}>{data.red_flags.map((f, i) => <li key={i} style={{ marginBottom: 4, color: 'var(--red)' }}>{f}</li>)}</ul>
+            </Section>
+          )}
+          {data.past_partnerships?.length > 0 && (
+            <Section title="Known Partnerships" icon={Icons.link}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{data.past_partnerships.map((p, i) => <Pill key={i} color="var(--blue)" bg="var(--blue-light)">{p}</Pill>)}</div>
             </Section>
           )}
         </div>
@@ -387,164 +411,188 @@
     }
 
     // ─── CREATOR CARD ───
-    function CreatorCard({ creator, onEnrich, onSaveAndEnrich, isDiscoveryResult }) {
+    function CreatorCard({ creator, onSaveAndEnrich, onEnrich, isDiscoveryResult, isDuplicate }) {
       const [expanded, setExpanded] = useState(false);
-      const [enriching, setEnriching] = useState(false);
+      const [enrichCreatorId, setEnrichCreatorId] = useState(null);
       const [enrichDone, setEnrichDone] = useState(false);
       const [localCreator, setLocalCreator] = useState(creator);
+      const [saveError, setSaveError] = useState(null);
 
       const c = localCreator;
       const ai = c.ai_analysis || {};
       const strategy = ai.outreach_strategy;
       const hasStrategy = !!strategy;
 
+      // Build platform list
       const platforms = [];
       if (c.tiktok_handle || c.tiktok_url) platforms.push({ name: 'tiktok', handle: c.tiktok_handle, followers: c.tiktok_followers, url: c.tiktok_url });
       if (c.instagram_handle || c.instagram_url) platforms.push({ name: 'instagram', handle: c.instagram_handle, followers: c.instagram_followers, url: c.instagram_url });
       if (c.youtube_handle || c.youtube_url) platforms.push({ name: 'youtube', handle: c.youtube_handle, followers: c.youtube_subscribers, url: c.youtube_url });
       if (c.twitter_handle || c.twitter_url) platforms.push({ name: 'twitter', handle: c.twitter_handle, followers: c.twitter_followers, url: c.twitter_url });
 
+      // For discovery results, use top-level fields
+      if (isDiscoveryResult && platforms.length === 0 && (c.handle || c.profile_url)) {
+        platforms.push({ name: c.platform || 'unknown', handle: c.handle, followers: c.followers, url: c.profile_url });
+      }
+
+      const otherProfiles = ai.other_profiles || {};
+      const credentials = ai.credentials || [];
+      const partnerships = ai.past_partnerships || [];
+      const contentFit = ai.content_fit || '';
+      const sourceUrls = ai.source_urls || [];
+      const recommendedAction = ai.recommended_action;
+
       const handleEnrich = async () => {
-        setEnriching(true);
+        setSaveError(null);
         setExpanded(true);
         try {
           if (isDiscoveryResult && onSaveAndEnrich) {
-            await onSaveAndEnrich(c);
+            const saved = await onSaveAndEnrich(c);
+            const newId = saved.creator.id;
+            setLocalCreator(prev => ({ ...prev, ...saved.creator, _saved: true }));
+            setEnrichCreatorId(newId);
           } else if (onEnrich) {
             await onEnrich(c.id);
+            setEnrichCreatorId(c.id);
           }
-        } catch (e) { console.error(e); }
+        } catch (e) {
+          console.error('Save & Enrich error:', e);
+          setSaveError(e.message || 'Failed to save');
+        }
       };
 
-      const handleEnrichComplete = async () => {
-        // Re-fetch creator to get the strategy
+      const handleEnrichComplete = async (completedId) => {
         try {
-          const updated = await api(`/creators/${c.id || enriching}`);
+          const updated = await api(`/creators/${completedId}`);
           setLocalCreator(updated);
           setEnrichDone(true);
-        } catch (e) { /* ignore */ }
-        setEnriching(false);
+        } catch (e) { console.error(e); }
+        setEnrichCreatorId(null);
       };
+
+      const isEnriching = !!enrichCreatorId;
 
       return (
         <div className="fade-in" style={{
-          background: 'var(--bg-card)', border: '1px solid var(--border)',
-          borderRadius: 'var(--radius)', overflow: 'hidden',
+          background: isDuplicate ? 'var(--bg-inset)' : 'var(--bg-card)',
+          border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden',
           transition: 'box-shadow 0.2s, border-color 0.2s',
           boxShadow: expanded ? 'var(--shadow-md)' : 'var(--shadow-sm)',
           borderColor: expanded ? 'var(--accent)' : 'var(--border)',
+          opacity: isDuplicate ? 0.55 : 1,
         }}>
-          {/* Card header */}
-          <div
-            onClick={() => setExpanded(!expanded)}
-            style={{
-              display: 'flex', alignItems: 'center', padding: '14px 18px',
-              cursor: 'pointer', gap: 12, userSelect: 'none',
-            }}
-          >
-            {/* Avatar placeholder */}
+          {/* Header */}
+          <div onClick={() => setExpanded(!expanded)} style={{ display: 'flex', alignItems: 'center', padding: '14px 18px', cursor: 'pointer', gap: 12, userSelect: 'none' }}>
             <div style={{
-              width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
-              background: 'var(--accent-light)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 14, fontWeight: 600, color: 'var(--accent)',
-            }}>
-              {(c.name || '?')[0]?.toUpperCase()}
-            </div>
+              width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
+              background: isDuplicate ? 'var(--border-light)' : 'var(--accent-light)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 15, fontWeight: 600, color: isDuplicate ? 'var(--text-tertiary)' : 'var(--accent)',
+            }}>{(c.name || '?')[0]?.toUpperCase()}</div>
 
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>{c.name}</span>
+                {isDuplicate && <Pill color="var(--yellow)" bg="var(--yellow-light)">{Icons.database} In DB</Pill>}
                 <QualityBadge tier={c.quality_tier} />
                 {hasStrategy && <PriorityBadge level={strategy.priority_level} />}
+                {credentials.length > 0 && <Pill color="var(--blue)" bg="var(--blue-light)" style={{ fontSize: 10 }}>{Icons.award} {credentials.slice(0, 2).join(', ')}</Pill>}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3, flexWrap: 'wrap' }}>
-                {platforms.map(p => (
-                  <span key={p.name} style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 3 }}>
-                    {platformIcon(p.name)} {p.handle ? `@${p.handle.replace('@','')}` : ''} {p.followers ? `(${fmtNum(p.followers)})` : ''}
-                  </span>
-                ))}
-                {c.categories?.length > 0 && c.categories.slice(0, 3).map(cat => (
-                  <Pill key={cat} style={{ fontSize: 10 }}>{cat}</Pill>
-                ))}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                {platforms.map((p, i) => <PlatformTag key={i} platform={p.name} handle={p.handle} followers={p.followers} url={p.url} />)}
+                {Object.entries(otherProfiles).map(([plat, handle]) => {
+                  if (platforms.some(p => p.name === plat)) return null;
+                  return <PlatformTag key={plat} platform={plat} handle={typeof handle === 'string' ? handle : ''} />;
+                })}
+                {c.categories?.length > 0 && c.categories.slice(0, 3).map(cat => <Pill key={cat} style={{ fontSize: 10 }}>{cat}</Pill>)}
               </div>
             </div>
 
-            {/* Right side: score + actions */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-              {c.relevance_score != null && (
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'var(--font-mono)', color: c.relevance_score >= 70 ? 'var(--green)' : c.relevance_score >= 40 ? 'var(--yellow)' : 'var(--text-tertiary)' }}>
-                    {Math.round(c.relevance_score)}
-                  </div>
-                  <div style={{ fontSize: 9, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Score</div>
-                </div>
-              )}
-              <span style={{ color: 'var(--text-tertiary)', transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
-                {Icons.chevDown}
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+              {c.relevance_score != null && <ScoreRing score={c.relevance_score} />}
+              <span style={{ color: 'var(--text-tertiary)', transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', display: 'flex' }}>{Icons.chevDown}</span>
             </div>
           </div>
 
-          {/* Expanded content */}
+          {/* Expanded */}
           {expanded && (
             <div style={{ borderTop: '1px solid var(--border)', padding: '16px 18px' }}>
-              {/* Quick info row */}
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-                {c.email && (
-                  <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                    {Icons.mail} {c.email}
-                  </span>
-                )}
+              {/* Quick info */}
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
+                {c.email && <EmailQuality email={c.email} />}
                 {c.pipeline_stage && <Pill>{c.pipeline_stage}</Pill>}
                 {platforms.map(p => p.url && (
                   <a key={p.name} href={p.url} target="_blank" rel="noopener" style={{ fontSize: 11, color: 'var(--accent)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 3 }}>
-                    {platformIcon(p.name)} Profile {Icons.ext}
+                    {Icons.ext} {PLATFORM_META[p.name]?.label || p.name}
                   </a>
                 ))}
               </div>
 
-              {c.bio && (
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 16, maxHeight: 80, overflow: 'hidden' }}>
-                  {c.bio}
+              {c.bio && <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 12 }}>{c.bio}</div>}
+
+              {/* AI Analysis block */}
+              {(contentFit || credentials.length > 0 || partnerships.length > 0 || sourceUrls.length > 0) && (
+                <div style={{ padding: '12px 14px', background: 'var(--bg-inset)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)', marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-tertiary)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}>{Icons.zap} AI Analysis</div>
+                  {contentFit && <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 8 }}>{contentFit}</div>}
+                  {credentials.length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Credentials:</span>
+                      {credentials.map((cr, i) => <Pill key={i} color="var(--blue)" bg="var(--blue-light)">{cr}</Pill>)}
+                    </div>
+                  )}
+                  {partnerships.length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Partnerships:</span>
+                      {partnerships.map((p, i) => <Pill key={i} color="var(--purple)" bg="var(--purple-light)">{p}</Pill>)}
+                    </div>
+                  )}
+                  {ai.red_flags?.length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
+                      <span style={{ fontSize: 11, color: 'var(--red)' }}>{Icons.alertCircle} Flags:</span>
+                      {ai.red_flags.map((f, i) => <Pill key={i} color="var(--red)" bg="var(--red-light)">{f}</Pill>)}
+                    </div>
+                  )}
+                  {recommendedAction && (
+                    <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: recommendedAction === 'save' ? 'var(--green)' : recommendedAction === 'skip' ? 'var(--red)' : 'var(--yellow)' }}>
+                      Recommendation: {recommendedAction}
+                    </div>
+                  )}
+                  {sourceUrls.length > 0 && (
+                    <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Sources:</span>
+                      {sourceUrls.slice(0, 3).map((url, i) => (
+                        <a key={i} href={url} target="_blank" rel="noopener" style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--accent)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                          {Icons.link} {url.replace(/https?:\/\/(www\.)?/, '').split('/')[0]}
+                        </a>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* Action buttons */}
-              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-                {!hasStrategy && !enriching && (
-                  <button onClick={handleEnrich} style={{
+              {/* Actions */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
+                {!hasStrategy && !isEnriching && !enrichDone && !isDuplicate && (
+                  <button className="btn-primary" onClick={handleEnrich} style={{
                     display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
                     background: 'var(--accent)', color: '#fff', border: 'none',
                     borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 12, fontWeight: 600,
-                    transition: 'background 0.2s',
-                  }}>
-                    {Icons.zap} {isDiscoveryResult ? 'Save & Enrich' : 'Enrich'}
-                  </button>
+                  }}>{Icons.zap} {isDiscoveryResult && !c._saved ? 'Save & Enrich' : 'Enrich'}</button>
                 )}
+                {isDuplicate && <span style={{ fontSize: 12, color: 'var(--yellow)', display: 'flex', alignItems: 'center', gap: 4 }}>{Icons.database} Already in your database</span>}
                 {hasStrategy && (
-                  <button onClick={() => {
-                    const text = `Subject: ${strategy.suggested_subject_line}\n\n${strategy.suggested_email_body}`;
-                    navigator.clipboard.writeText(text);
-                  }} style={{
+                  <button className="btn-ghost" onClick={() => { navigator.clipboard.writeText(`Subject: ${strategy.suggested_subject_line}\n\n${strategy.suggested_email_body}`); }} style={{
                     display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
-                    background: 'var(--bg)', border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 12, fontWeight: 500,
-                    color: 'var(--text-secondary)',
-                  }}>
-                    {Icons.clipboard} Copy Email
-                  </button>
+                    background: 'transparent', border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)',
+                  }}>{Icons.clipboard} Copy Email</button>
                 )}
+                {saveError && <span style={{ fontSize: 12, color: 'var(--red)' }}>{saveError}</span>}
               </div>
 
-              {/* Enrichment progress */}
-              {enriching && c.id && (
-                <EnrichmentProgress creatorId={c.id} onComplete={handleEnrichComplete} />
-              )}
-
-              {/* Strategy panel */}
-              {(hasStrategy || enrichDone) && (
-                <StrategyPanel creatorId={c.id} strategy={strategy} />
-              )}
+              {isEnriching && <EnrichmentProgress creatorId={enrichCreatorId} onComplete={handleEnrichComplete} />}
+              {(hasStrategy || enrichDone) && <StrategyPanel creatorId={c.id || enrichCreatorId} strategy={strategy} />}
             </div>
           )}
         </div>
@@ -558,7 +606,35 @@
       const [searchStatus, setSearchStatus] = useState(null);
       const [results, setResults] = useState(null);
       const [error, setError] = useState(null);
+      const [resultCount, setResultCount] = useState(20);
+      const [existingCreators, setExistingCreators] = useState([]);
       const pollRef = useRef(null);
+
+      useEffect(() => {
+        api('/creators', { params: { per_page: 500, sort_by: 'name', sort_dir: 'asc' } })
+          .then(data => setExistingCreators(data.creators || []))
+          .catch(() => {});
+      }, []);
+
+      const dedupSet = useMemo(() => {
+        const s = new Set();
+        existingCreators.forEach(c => {
+          if (c.name) s.add(c.name.toLowerCase().trim());
+          if (c.email) s.add(c.email.toLowerCase().trim());
+          ['tiktok_handle','instagram_handle','youtube_handle','twitter_handle'].forEach(k => {
+            if (c[k]) s.add(c[k].toLowerCase().replace('@','').trim());
+          });
+        });
+        return s;
+      }, [existingCreators]);
+
+      function checkDuplicate(r) {
+        if (r.name && dedupSet.has(r.name.toLowerCase().trim())) return true;
+        if (r.email && dedupSet.has(r.email.toLowerCase().trim())) return true;
+        const h = (r.handle || '').toLowerCase().replace('@','').trim();
+        if (h && dedupSet.has(h)) return true;
+        return false;
+      }
 
       const presets = [
         { label: 'Doctor TikTok', query: 'doctors who talk about heart health on TikTok' },
@@ -580,171 +656,121 @@
 
       const doSearch = async (q) => {
         if (!q.trim()) return;
-        setSearching(true);
-        setError(null);
-        setResults(null);
-        setSearchStatus(null);
+        setSearching(true); setError(null); setResults(null); setSearchStatus(null);
         clearInterval(pollRef.current);
-
         try {
-          const data = await api('/discover', { method: 'POST', body: { query: q, platforms: ['tiktok', 'instagram', 'youtube'], max_results: 20 } });
-          const searchId = data.search_id;
+          const data = await api('/discover', { method: 'POST', body: { query: q, platforms: ['tiktok','instagram','youtube'], max_results: resultCount } });
           setSearchStatus({ status: 'starting' });
-
           pollRef.current = setInterval(async () => {
             try {
-              const status = await api(`/discover/${searchId}`);
-              setSearchStatus(status);
-
-              if (status.status === 'complete') {
+              const st = await api(`/discover/${data.search_id}`);
+              setSearchStatus(st);
+              if (st.status === 'complete') {
                 clearInterval(pollRef.current);
-                setResults(status);
-                setSearching(false);
-              } else if (status.status === 'failed') {
+                setResults(st); setSearching(false);
+                api('/creators', { params: { per_page: 500 } }).then(d => setExistingCreators(d.creators || [])).catch(() => {});
+              } else if (st.status === 'failed') {
                 clearInterval(pollRef.current);
-                setError(status.error || 'Search failed');
-                setSearching(false);
+                setError(st.error || 'Search failed'); setSearching(false);
               }
-            } catch (e) { /* keep polling */ }
+            } catch (e) {}
           }, 3000);
-
-        } catch (e) {
-          setError(e.message);
-          setSearching(false);
-        }
+        } catch (e) { setError(e.message); setSearching(false); }
       };
 
       useEffect(() => () => clearInterval(pollRef.current), []);
 
       const handleSaveAndEnrich = async (result) => {
-        try {
-          const saved = await api(`/discover/results/${result.id}/save-and-enrich`, { method: 'POST' });
-          setResults(prev => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              results: prev.results.map(r =>
-                r.id === result.id ? { ...r, id: saved.creator.id, ...saved.creator, _saved: true } : r
-              ),
-            };
-          });
-          return saved;
-        } catch (e) {
-          throw e;
-        }
+        const saved = await api(`/discover/results/${result.id}/save-and-enrich`, { method: 'POST' });
+        setResults(prev => {
+          if (!prev) return prev;
+          return { ...prev, results: prev.results.map(r => r.id === result.id ? { ...r, _saved: true } : r) };
+        });
+        if (saved.creator) setExistingCreators(prev => [...prev, saved.creator]);
+        return saved;
       };
+
+      const sortedResults = useMemo(() => {
+        if (!results?.results) return [];
+        const tagged = results.results.map(r => ({ ...r, _isDuplicate: checkDuplicate(r) }));
+        return tagged.sort((a, b) => {
+          if (a._isDuplicate !== b._isDuplicate) return a._isDuplicate ? 1 : -1;
+          return (b.relevance_score || 0) - (a.relevance_score || 0);
+        });
+      }, [results, dedupSet]);
+
+      const newCount = sortedResults.filter(r => !r._isDuplicate).length;
+      const dupCount = sortedResults.filter(r => r._isDuplicate).length;
 
       return (
         <div>
-          {/* Search bar */}
-          <div style={{ marginBottom: 24 }}>
-            <div style={{
-              display: 'flex', gap: 8, background: 'var(--bg-input)',
-              border: '1px solid var(--border)', borderRadius: 'var(--radius)',
-              padding: '4px 4px 4px 16px', alignItems: 'center',
-              boxShadow: 'var(--shadow-sm)', transition: 'border-color 0.2s',
-            }}>
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: 'flex', gap: 8, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '4px 4px 4px 16px', alignItems: 'center', boxShadow: 'var(--shadow-sm)' }}>
               <span style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}>{Icons.search}</span>
-              <input
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && doSearch(query)}
+              <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && doSearch(query)}
                 placeholder="Find doctors who talk about heart health on TikTok..."
-                style={{
-                  flex: 1, border: 'none', outline: 'none', background: 'transparent',
-                  fontSize: 14, color: 'var(--text-primary)', padding: '10px 0',
-                }}
-              />
-              <button
-                onClick={() => doSearch(query)}
-                disabled={searching || !query.trim()}
-                style={{
-                  padding: '10px 20px', background: searching ? 'var(--border)' : 'var(--accent)',
-                  color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)',
-                  cursor: searching ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600,
-                  display: 'flex', alignItems: 'center', gap: 6, transition: 'background 0.2s',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {searching ? Icons.loader : Icons.compass}
-                {searching ? 'Searching...' : 'Discover'}
-              </button>
+                style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 14, color: 'var(--text-primary)', padding: '10px 0' }} />
+              <select value={resultCount} onChange={e => setResultCount(Number(e.target.value))} style={{
+                padding: '6px 8px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+                fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', cursor: 'pointer',
+              }}>
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <button onClick={() => doSearch(query)} disabled={searching || !query.trim()} className="btn-primary" style={{
+                padding: '10px 20px', background: searching ? 'var(--border)' : 'var(--accent)',
+                color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)',
+                cursor: searching ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600,
+                display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
+              }}>{searching ? Icons.loader : Icons.compass} {searching ? 'Searching...' : 'Discover'}</button>
             </div>
           </div>
 
-          {/* Preset chips */}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 24 }}>
             {presets.map(p => (
-              <button
-                key={p.label}
-                onClick={() => { setQuery(p.query); doSearch(p.query); }}
-                style={{
-                  padding: '6px 12px', background: 'var(--bg-card)', border: '1px solid var(--border)',
-                  borderRadius: 20, cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)',
-                  fontWeight: 500, transition: 'all 0.2s', whiteSpace: 'nowrap',
-                }}
-                onMouseEnter={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.color = 'var(--accent)'; }}
-                onMouseLeave={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.color = 'var(--text-secondary)'; }}
-              >
-                {p.label}
-              </button>
+              <button key={p.label} className="btn-ghost" onClick={() => { setQuery(p.query); doSearch(p.query); }} style={{
+                padding: '6px 12px', background: 'var(--bg-card)', border: '1px solid var(--border)',
+                borderRadius: 20, cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500, transition: 'all 0.2s', whiteSpace: 'nowrap',
+              }}>{p.label}</button>
             ))}
           </div>
 
-          {error && (
-            <div style={{ padding: '12px 16px', background: 'var(--red-light)', borderRadius: 'var(--radius-sm)', color: 'var(--red)', fontSize: 13, marginBottom: 16 }}>
-              {error}
-            </div>
-          )}
+          {error && <div style={{ padding: '12px 16px', background: 'var(--red-light)', borderRadius: 'var(--radius-sm)', color: 'var(--red)', fontSize: 13, marginBottom: 16 }}>{error}</div>}
 
-          {/* Search progress */}
           {searching && searchStatus && (
-            <div className="fade-in" style={{
-              padding: '20px 24px', background: 'var(--bg-card)', border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)', marginBottom: 20,
-            }}>
+            <div className="fade-in" style={{ padding: '20px 24px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: 20 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
                 {Icons.loader}
-                <span style={{ fontSize: 14, fontWeight: 500 }}>
-                  {statusLabels[searchStatus.status] || searchStatus.status}
-                </span>
+                <span style={{ fontSize: 14, fontWeight: 500 }}>{statusLabels[searchStatus.status] || searchStatus.status}</span>
               </div>
               <div style={{ height: 3, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
                 <div style={{
-                  height: '100%', background: 'var(--accent)', borderRadius: 2,
-                  transition: 'width 0.8s ease',
-                  width: searchStatus.status === 'parsing_intent' ? '20%' :
-                         searchStatus.status === 'searching' ? '50%' :
-                         searchStatus.status === 'analyzing' ? '80%' : '10%',
+                  height: '100%', background: 'var(--accent)', borderRadius: 2, transition: 'width 0.8s ease',
+                  width: searchStatus.status === 'parsing_intent' ? '20%' : searchStatus.status === 'searching' ? '50%' : searchStatus.status === 'analyzing' ? '80%' : '10%',
                 }} />
               </div>
-              <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', marginTop: 8 }}>
-                This usually takes 1-2 minutes. You can leave this tab open.
-              </div>
+              <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', marginTop: 8 }}>This usually takes 1-2 minutes.</div>
             </div>
           )}
 
-          {/* Results */}
           {results && (
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                  Found <strong>{results.results_count || results.results?.length || 0}</strong> creators
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600 }}>{results.results_count || results.results?.length || 0} creators found</span>
+                  {newCount > 0 && <Pill color="var(--green)" bg="var(--green-light)">{newCount} new</Pill>}
+                  {dupCount > 0 && <Pill color="var(--yellow)" bg="var(--yellow-light)">{dupCount} already saved</Pill>}
                 </div>
-                {results.parsed_intent && (
-                  <Pill>{results.parsed_intent.primary_niche || 'General'}</Pill>
-                )}
+                {results.parsed_intent && <Pill>{results.parsed_intent.primary_niche || 'General'}</Pill>}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {results.results?.map((r, i) => (
-                  <CreatorCard
-                    key={r.id || i}
-                    creator={{
-                      ...r,
-                      quality_tier: r.quality_tier || 'Unrated',
-                      categories: r.categories || [],
-                    }}
+                {sortedResults.map((r, i) => (
+                  <CreatorCard key={r.id || i}
+                    creator={{ ...r, quality_tier: r.quality_tier || null, categories: r.categories || [] }}
                     isDiscoveryResult={!r._saved}
+                    isDuplicate={r._isDuplicate}
                     onSaveAndEnrich={handleSaveAndEnrich}
                   />
                 ))}
@@ -753,10 +779,12 @@
           )}
 
           {!results && !searching && (
-            <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-tertiary)' }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>{Icons.compass}</div>
-              <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 6, color: 'var(--text-secondary)' }}>Discover creators</div>
-              <div style={{ fontSize: 13, maxWidth: 360, margin: '0 auto' }}>
+            <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--text-tertiary)' }}>
+              <div style={{ marginBottom: 16, opacity: 0.3 }}>
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 6, color: 'var(--text-secondary)' }}>Discover creators</div>
+              <div style={{ fontSize: 13, maxWidth: 380, margin: '0 auto', lineHeight: 1.6 }}>
                 Search naturally — "find doctors who talk about heart health on TikTok" — and AI will find, score, and generate outreach strategies.
               </div>
             </div>
@@ -777,11 +805,8 @@
       const load = useCallback(async () => {
         setLoading(true);
         try {
-          const data = await api('/creators', {
-            params: { search: search || undefined, page, per_page: 30, sort_by: 'created_at', sort_dir: 'desc', ...filters },
-          });
-          setCreators(data.creators || []);
-          setTotal(data.total || 0);
+          const data = await api('/creators', { params: { search: search || undefined, page, per_page: 30, sort_by: 'created_at', sort_dir: 'desc', ...filters } });
+          setCreators(data.creators || []); setTotal(data.total || 0);
         } catch (e) { console.error(e); }
         setLoading(false);
       }, [search, page, filters]);
@@ -795,28 +820,16 @@
 
       return (
         <div>
-          {/* Search + filter bar */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-            <div style={{
-              flex: 1, display: 'flex', alignItems: 'center', gap: 8,
-              padding: '0 14px', background: 'var(--bg-input)',
-              border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-            }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, padding: '0 14px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
               <span style={{ color: 'var(--text-tertiary)' }}>{Icons.search}</span>
-              <input
-                value={search}
-                onChange={e => { setSearch(e.target.value); setPage(1); }}
+              <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
                 placeholder="Search by name, handle, email..."
-                style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, color: 'var(--text-primary)', padding: '10px 0' }}
-              />
+                style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, color: 'var(--text-primary)', padding: '10px 0' }} />
             </div>
-            <select
-              onChange={e => { setFilters(f => ({ ...f, pipeline_stage: e.target.value || undefined })); setPage(1); }}
-              style={{
-                padding: '8px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)', fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer',
-              }}
-            >
+            <select onChange={e => { setFilters(f => ({ ...f, pipeline_stage: e.target.value || undefined })); setPage(1); }} style={{
+              padding: '8px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer',
+            }}>
               <option value="">All Stages</option>
               <option value="discovered">Discovered</option>
               <option value="contacted">Contacted</option>
@@ -824,13 +837,9 @@
               <option value="contracted">Contracted</option>
               <option value="active">Active</option>
             </select>
-            <select
-              onChange={e => { setFilters(f => ({ ...f, quality_tier: e.target.value || undefined })); setPage(1); }}
-              style={{
-                padding: '8px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)', fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer',
-              }}
-            >
+            <select onChange={e => { setFilters(f => ({ ...f, quality_tier: e.target.value || undefined })); setPage(1); }} style={{
+              padding: '8px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer',
+            }}>
               <option value="">All Tiers</option>
               <option value="A+">A+</option>
               <option value="A">A</option>
@@ -839,41 +848,27 @@
             </select>
           </div>
 
-          {/* Count */}
-          <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
-            {total} creator{total !== 1 ? 's' : ''}
-          </div>
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>{total} creator{total !== 1 ? 's' : ''}</div>
 
           {loading ? (
             <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-tertiary)' }}>{Icons.loader} Loading...</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {creators.map(c => (
-                <CreatorCard key={c.id} creator={c} onEnrich={handleEnrich} />
-              ))}
-              {creators.length === 0 && (
-                <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-tertiary)', fontSize: 13 }}>
-                  No creators found. Try adjusting your filters or import some data.
-                </div>
-              )}
+              {creators.map(c => <CreatorCard key={c.id} creator={c} onEnrich={handleEnrich} />)}
+              {creators.length === 0 && <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-tertiary)', fontSize: 13 }}>No creators found.</div>}
             </div>
           )}
 
-          {/* Pagination */}
           {total > 30 && (
             <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 20 }}>
-              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} style={{
-                padding: '6px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)', cursor: page <= 1 ? 'not-allowed' : 'pointer',
-                fontSize: 12, color: 'var(--text-secondary)', opacity: page <= 1 ? 0.4 : 1,
+              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="btn-ghost" style={{
+                padding: '6px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+                cursor: page <= 1 ? 'not-allowed' : 'pointer', fontSize: 12, color: 'var(--text-secondary)', opacity: page <= 1 ? 0.4 : 1,
               }}>Previous</button>
-              <span style={{ padding: '6px 12px', fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)' }}>
-                Page {page} of {Math.ceil(total / 30)}
-              </span>
-              <button disabled={page >= Math.ceil(total / 30)} onClick={() => setPage(p => p + 1)} style={{
-                padding: '6px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)', cursor: page >= Math.ceil(total / 30) ? 'not-allowed' : 'pointer',
-                fontSize: 12, color: 'var(--text-secondary)', opacity: page >= Math.ceil(total / 30) ? 0.4 : 1,
+              <span style={{ padding: '6px 12px', fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)' }}>Page {page} of {Math.ceil(total / 30)}</span>
+              <button disabled={page >= Math.ceil(total / 30)} onClick={() => setPage(p => p + 1)} className="btn-ghost" style={{
+                padding: '6px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+                cursor: page >= Math.ceil(total / 30) ? 'not-allowed' : 'pointer', fontSize: 12, color: 'var(--text-secondary)', opacity: page >= Math.ceil(total / 30) ? 0.4 : 1,
               }}>Next</button>
             </div>
           )}
@@ -890,29 +885,15 @@
       const fileRef = useRef(null);
 
       const doUpload = async (file) => {
-        setUploading(true);
-        setError(null);
-        setResult(null);
+        setUploading(true); setError(null); setResult(null);
         const formData = new FormData();
         formData.append('file', file);
         try {
           const res = await fetch(`${API}/import`, { method: 'POST', body: formData });
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || 'Upload failed');
-          }
+          if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || 'Upload failed'); }
           setResult(await res.json());
-        } catch (e) {
-          setError(e.message);
-        }
+        } catch (e) { setError(e.message); }
         setUploading(false);
-      };
-
-      const onDrop = (e) => {
-        e.preventDefault();
-        setDragging(false);
-        const file = e.dataTransfer?.files?.[0];
-        if (file) doUpload(file);
       };
 
       return (
@@ -920,49 +901,31 @@
           <div
             onDragOver={e => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
-            onDrop={onDrop}
+            onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer?.files?.[0]; if (f) doUpload(f); }}
             onClick={() => fileRef.current?.click()}
             style={{
               border: `2px dashed ${dragging ? 'var(--accent)' : 'var(--border)'}`,
-              borderRadius: 'var(--radius)', padding: '60px 40px',
-              textAlign: 'center', cursor: 'pointer',
-              background: dragging ? 'var(--accent-light)' : 'var(--bg-card)',
-              transition: 'all 0.2s',
+              borderRadius: 'var(--radius)', padding: '60px 40px', textAlign: 'center', cursor: 'pointer',
+              background: dragging ? 'var(--accent-light)' : 'var(--bg-card)', transition: 'all 0.2s',
             }}
           >
             <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={e => e.target.files?.[0] && doUpload(e.target.files[0])} />
             <div style={{ marginBottom: 12, color: 'var(--text-tertiary)' }}>
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-              </svg>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             </div>
             {uploading ? (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--accent)' }}>
-                {Icons.loader} Importing...
-              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--accent)' }}>{Icons.loader} Importing...</div>
             ) : (
               <>
-                <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 4 }}>
-                  Drop a CSV or Excel file here
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                  Supports the 37-column Luma creator spreadsheet format
-                </div>
+                <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 4 }}>Drop a CSV or Excel file here</div>
+                <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Supports the 37-column Luma creator spreadsheet format</div>
               </>
             )}
           </div>
-
-          {error && (
-            <div style={{ marginTop: 16, padding: '12px 16px', background: 'var(--red-light)', borderRadius: 'var(--radius-sm)', color: 'var(--red)', fontSize: 13 }}>
-              {error}
-            </div>
-          )}
-
+          {error && <div style={{ marginTop: 16, padding: '12px 16px', background: 'var(--red-light)', borderRadius: 'var(--radius-sm)', color: 'var(--red)', fontSize: 13 }}>{error}</div>}
           {result && (
             <div className="fade-in" style={{ marginTop: 20, padding: '16px 20px', background: 'var(--green-light)', borderRadius: 'var(--radius)', border: '1px solid var(--green)' }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--green)', marginBottom: 8 }}>
-                {Icons.check} Import Complete
-              </div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--green)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>{Icons.check} Import Complete</div>
               <div style={{ display: 'flex', gap: 20, fontSize: 13, color: 'var(--text-secondary)' }}>
                 <span><strong>{result.imported}</strong> imported</span>
                 <span><strong>{result.duplicates_skipped}</strong> duplicates skipped</span>
@@ -980,13 +943,8 @@
       const [tab, setTab] = useState('discover');
       const [stats, setStats] = useState(null);
 
-      useEffect(() => {
-        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-      }, [dark]);
-
-      useEffect(() => {
-        api('/stats').then(setStats).catch(() => {});
-      }, [tab]);
+      useEffect(() => { document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light'); }, [dark]);
+      useEffect(() => { api('/stats').then(setStats).catch(() => {}); }, [tab]);
 
       const tabs = [
         { id: 'discover', label: 'Discover', icon: Icons.compass },
@@ -996,56 +954,35 @@
 
       return (
         <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-          {/* Top bar */}
           <header style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '12px 24px', borderBottom: '1px solid var(--border)',
             background: 'var(--bg-card)', position: 'sticky', top: 0, zIndex: 100,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.02em' }}>
-                Creator Engine
-              </span>
-              <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', padding: '2px 6px', background: 'var(--accent-light)', borderRadius: 4, color: 'var(--accent)' }}>
-                Luma Nutrition
-              </span>
+              <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.02em' }}>Creator Engine</span>
+              <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', padding: '2px 6px', background: 'var(--accent-light)', borderRadius: 4, color: 'var(--accent)' }}>Luma Nutrition</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {stats && (
-                <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', marginRight: 8 }}>
-                  {stats.total_creators || 0} creators
-                </span>
-              )}
+              {stats && <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', marginRight: 8 }}>{stats.total_creators || 0} creators</span>}
               <ThemeToggle dark={dark} onToggle={() => setDark(d => !d)} />
             </div>
           </header>
 
-          {/* Tab nav */}
-          <nav style={{
-            display: 'flex', gap: 0, padding: '0 24px',
-            borderBottom: '1px solid var(--border)', background: 'var(--bg-card)',
-          }}>
+          <nav style={{ display: 'flex', gap: 0, padding: '0 24px', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)' }}>
             {tabs.map(t => (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '12px 16px', border: 'none', background: 'transparent',
-                  cursor: 'pointer', fontSize: 13, fontWeight: tab === t.id ? 600 : 400,
-                  color: tab === t.id ? 'var(--accent)' : 'var(--text-secondary)',
-                  borderBottom: tab === t.id ? '2px solid var(--accent)' : '2px solid transparent',
-                  transition: 'all 0.2s', marginBottom: -1,
-                }}
-              >
-                {t.icon} {t.label}
-              </button>
+              <button key={t.id} onClick={() => setTab(t.id)} style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '12px 16px', border: 'none', background: 'transparent',
+                cursor: 'pointer', fontSize: 13, fontWeight: tab === t.id ? 600 : 400,
+                color: tab === t.id ? 'var(--accent)' : 'var(--text-secondary)',
+                borderBottom: tab === t.id ? '2px solid var(--accent)' : '2px solid transparent',
+                transition: 'all 0.2s', marginBottom: -1,
+              }}>{t.icon} {t.label}</button>
             ))}
           </nav>
 
-          {/* Content */}
-          <main style={{ flex: 1, padding: '24px', maxWidth: 860, width: '100%', margin: '0 auto' }}>
-            {/* Stats row */}
+          <main style={{ flex: 1, padding: '24px', maxWidth: 880, width: '100%', margin: '0 auto' }}>
             {tab === 'database' && stats && (
               <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
                 <StatBox label="Total" value={stats.total_creators || 0} />
@@ -1054,19 +991,13 @@
                 <StatBox label="Avg Score" value={stats.avg_relevance ? Math.round(stats.avg_relevance) : '—'} />
               </div>
             )}
-
             {tab === 'discover' && <DiscoverTab />}
             {tab === 'database' && <DatabaseTab />}
             {tab === 'import' && <ImportTab />}
           </main>
 
-          {/* Footer */}
-          <footer style={{
-            padding: '12px 24px', borderTop: '1px solid var(--border)',
-            fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'center',
-            fontFamily: 'var(--font-mono)',
-          }}>
-            Creator Discovery Engine v1.0 · Luma Nutrition · <a href="https://creator-engine-production.up.railway.app/docs" target="_blank" rel="noopener" style={{ color: 'var(--accent)', textDecoration: 'none' }}>API Docs</a>
+          <footer style={{ padding: '12px 24px', borderTop: '1px solid var(--border)', fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'center', fontFamily: 'var(--font-mono)' }}>
+            Creator Discovery Engine v1.1 · Luma Nutrition · <a href="https://creator-engine-production.up.railway.app/docs" target="_blank" rel="noopener" style={{ color: 'var(--accent)', textDecoration: 'none' }}>API Docs</a>
           </footer>
         </div>
       );
