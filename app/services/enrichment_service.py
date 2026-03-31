@@ -432,12 +432,29 @@ async def enrich_creator(
         enrichment["email_search"] = email_result
 
         if email_result.get("primary_email"):
-            creator.email = email_result["primary_email"]
-            note = CreatorNote(
-                content=f"Email found: {email_result['primary_email']} (source: {', '.join(email_result.get('sources', []))})",
-                note_type="ai_analysis",
+            found_email = email_result["primary_email"]
+            # Check if this email already belongs to another creator
+            existing_with_email = await db.execute(
+                select(Creator).where(
+                    Creator.email == found_email,
+                    Creator.id != creator.id
+                )
             )
-            creator.notes.append(note)
+            if existing_with_email.scalar_one_or_none():
+                logger.warning(f"[Enrich] Email {found_email} already belongs to another creator, storing in notes only")
+                enrichment["email_search"]["conflict"] = f"Email {found_email} already assigned to another creator"
+                note = CreatorNote(
+                    content=f"Email found but already in use by another creator: {found_email}",
+                    note_type="ai_analysis",
+                )
+                creator.notes.append(note)
+            else:
+                creator.email = found_email
+                note = CreatorNote(
+                    content=f"Email found: {found_email} (source: {', '.join(email_result.get('sources', []))})",
+                    note_type="ai_analysis",
+                )
+                creator.notes.append(note)
     else:
         enrichment["email_search"] = {"skipped": True, "reason": "email already exists"}
 
@@ -500,8 +517,21 @@ async def enrich_creator(
     )
     creator.notes.append(note)
 
-    await db.commit()
-    await db.refresh(creator)
+    try:
+        await db.commit()
+        await db.refresh(creator)
+    except Exception as commit_err:
+        logger.error(f"[Enrich] DB commit failed: {commit_err}")
+        await db.rollback()
+        # Try again without the email change if that was the issue
+        try:
+            creator.email = None  # Reset email to avoid constraint violation
+            await db.commit()
+            await db.refresh(creator)
+        except Exception:
+            await db.rollback()
+            _update_status(cid, status="failed", step=3, step_label="Database error", error=str(commit_err))
+            raise
 
     _update_status(cid,
         status="complete", step=3,

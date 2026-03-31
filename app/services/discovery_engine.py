@@ -768,6 +768,54 @@ class DiscoveryEngine:
             unique.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
             final = unique[:max_results]
 
+            # Step 5.5: Quick contact enrichment for top results
+            # For creators without email, do a fast web search to find contact info
+            search.status = "enriching_contacts"
+            await db.commit()
+
+            async def quick_contact_search(creator_data):
+                """Fast email/contact search for a single creator."""
+                if creator_data.get("email"):
+                    return creator_data  # Already has email
+                name = creator_data.get("name", "")
+                handle = creator_data.get("handle", "")
+                if not name and not handle:
+                    return creator_data
+                try:
+                    queries = []
+                    if handle:
+                        queries.append(f"{handle} email contact")
+                        queries.append(f"{handle} business inquiries collab")
+                    if name:
+                        queries.append(f'"{name}" email contact health creator')
+                    results = await self.web.search(queries[:2], max_results_per_query=3)
+                    # Look for emails in results
+                    import re
+                    email_pattern = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
+                    found_emails = set()
+                    for r in results:
+                        text = f"{r.get('title','')} {r.get('snippet','')} {r.get('link','')}"
+                        found_emails.update(email_pattern.findall(text))
+                    # Filter out junk emails
+                    junk = {'noreply','no-reply','info@','support@tiktok','support@instagram','example','sentry','abuse'}
+                    good_emails = [e for e in found_emails if not any(j in e.lower() for j in junk)]
+                    if good_emails:
+                        creator_data["email"] = good_emails[0]
+                        creator_data.setdefault("contact_source", "web_search")
+                except Exception as e:
+                    logger.debug(f"[Discovery] Quick contact search failed for {name}: {e}")
+                return creator_data
+
+            # Run contact search in parallel for top 10 results (don't slow down for all)
+            import asyncio
+            contact_tasks = [quick_contact_search(c) for c in final[:10]]
+            enriched_top = await asyncio.gather(*contact_tasks, return_exceptions=True)
+            for i, result in enumerate(enriched_top):
+                if i < len(final) and not isinstance(result, Exception):
+                    final[i] = result
+
+            logger.info(f"[Discovery] Contact enrichment done — {sum(1 for c in final if c.get('email'))} have emails")
+
             # Step 6: Store results
             for result_data in final:
                 result = DiscoveryResult(
