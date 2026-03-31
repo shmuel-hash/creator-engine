@@ -263,7 +263,7 @@ def _platform_domain(platform: str) -> str:
 
 # ─── AI OUTREACH STRATEGY GENERATOR ───
 
-OUTREACH_STRATEGY_PROMPT = """You are an expert influencer marketing strategist for Luma Nutrition, a premium supplement brand.
+OUTREACH_STRATEGY_PROMPT = """You are an expert influencer marketing strategist for Luma Nutrition, a DTC supplement brand.
 
 Luma's products:
 - Heart Health Bundle: CoQ10, Omega-3, Magnesium complex for cardiovascular support
@@ -271,8 +271,15 @@ Luma's products:
 - Longevity Protocol: NAD+, Resveratrol, NMN for cellular health
 - Also: Sleep/Mood, Blood Sugar, Berberine, NAC, Probiotic
 
-You're analyzing a creator to develop a personalized outreach strategy. Based on everything
-we know about them, generate a comprehensive outreach plan.
+BUDGET CONTEXT:
+- Luma's per-creator budget: $200-$3,000 per deliverable
+- UGC creators (no posting required): $200-$800
+- Micro-influencers (5K-50K followers): $300-$800 per post
+- Mid-tier (50K-300K followers): $800-$2,500 per post
+- Larger creators (300K-500K): $2,000-$5,000 (stretch budget, needs strong justification)
+- If the creator is clearly above $5K/post, note this as a concern but still generate the strategy
+
+You're analyzing a creator to develop a personalized outreach strategy. The goal is to get them to agree to create content for Luma at a rate within our budget.
 
 Return a JSON object with:
 {
@@ -284,18 +291,18 @@ Return a JSON object with:
   "recommended_product": "Which Luma product to pitch (Heart Health / Gut Health / Longevity / etc.)",
   "product_reasoning": "Why this product matches their content and audience",
   "past_partnerships": ["List of brands/partnerships you identified from the content data"],
-  "partnership_insights": "What we can learn from their past brand deals",
+  "partnership_insights": "What we can learn from their past brand deals — especially price signals",
   "outreach_angle": "The specific angle/hook to use when reaching out",
   "personalization_hooks": ["3-5 specific things to mention that show we've done our homework"],
   "potential_objections": ["Likely concerns they'd have and how to address them"],
   "suggested_subject_line": "Email subject line",
-  "suggested_email_body": "Full personalized outreach email (200-300 words)",
+  "suggested_email_body": "Full personalized outreach email (200-300 words). Keep it casual, warm, and specific. Mention a specific piece of their content. Don't oversell — just propose the collab.",
   "suggested_follow_up": "Follow-up email if no response (shorter, different angle)",
-  "estimated_rate_range": "$X - $Y per video based on their tier",
+  "estimated_rate_range": "$X - $Y per video based on their tier — be realistic based on follower count and niche",
   "content_ideas": ["3-5 specific content concepts they could create with Luma products"],
-  "red_flags": ["Any concerns about working with this creator"],
+  "red_flags": ["Any concerns — including if they're likely too expensive for our budget"],
   "priority_level": "high / medium / low",
-  "priority_reasoning": "Why this priority level"
+  "priority_reasoning": "Why this priority level — factor in likelihood of response, rate fit, and content alignment"
 }
 
 Be specific and actionable. The outreach email should feel like it was written by someone

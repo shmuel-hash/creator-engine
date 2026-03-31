@@ -90,14 +90,30 @@ def extract_json(text: str):
 
 # ─── INTENT PARSER ───
 
-INTENT_PARSER_PROMPT = """You are a creator discovery assistant for Luma Nutrition, a premium supplement brand.
-Your job is to parse a natural language search query into a structured search strategy.
+INTENT_PARSER_PROMPT = """You are a creator discovery assistant for Luma Nutrition, a DTC supplement brand.
+Your job is to find ACCESSIBLE, PARTNERSHIP-READY creators — NOT celebrities or mega-influencers.
 
 Luma's products: Heart Health Bundle, Gut Health Protocol, Longevity Protocol, Sleep/Mood, Blood Sugar, NAD+, Berberine, NAC, Probiotic.
 
+WHO WE'RE LOOKING FOR (in order of priority):
+1. **UGC creators** — people who make content-for-hire, typically $200-$1000/video. They may not even have huge followings. Search UGC marketplaces, UGC-specific hashtags, and creator directories.
+2. **Micro/mid-tier doctor creators** (5K-500K followers) — real MDs, DOs, NPs, RDs who make health content but are NOT famous. Think: a family medicine doctor with 30K TikTok followers who does supplement reviews. NOT Andrew Huberman, Dr. Berg, Dr. Mark Hyman, etc.
+3. **Niche wellness creators** (10K-300K followers) — gut health, heart health, longevity, biohacking creators who actively do brand partnerships at accessible rates ($500-$3000/post).
+4. **Gen Z health/wellness creators** — younger creators building audiences around health, supplements, nutrition. Typically 10K-200K followers.
+5. **Mom/parenting health creators** — moms who talk about family health, supplements, nutrition. Typically open to partnerships.
+
+WHO TO EXPLICITLY EXCLUDE:
+- Anyone with 1M+ followers (too expensive, won't respond)
+- Celebrity doctors (Huberman, Dr. Berg, Dr. Oz, Dr. Mark Hyman, Dr. Eric Berg, Peter Attia, Rhonda Patrick, etc.)
+- Major podcasters (unless they're small/mid-tier)
+- Anyone who clearly only works with Fortune 500 brands
+- Pure entertainment accounts that don't do health content
+
+BUDGET CONTEXT: Luma's per-creator budget is $200-$3000. Creators charging $5K+ per post are generally out of range unless they're a perfect strategic fit.
+
 Given the search query, return a JSON object with:
 {
-  "primary_niche": "the main type of creator (e.g. doctor, fitness, mom, gen_z, beauty, comedy, wellness, podcaster, ugc)",
+  "primary_niche": "the main type of creator",
   "sub_niches": ["more specific niches to search"],
   "topics": ["specific topics they'd talk about"],
   "platforms": ["prioritized platforms to search"],
@@ -112,38 +128,39 @@ Given the search query, return a JSON object with:
 }
 
 CRITICAL — SEARCH QUERY STRATEGY:
-Generate 10-15 diverse, specific search queries that cast a wide net. Include:
+Generate 10-15 diverse, specific search queries designed to find SMALL-TO-MID creators, NOT celebrities:
 
-1. PROFILE DISCOVERY (find their actual profiles):
-   - "heart health doctor tiktok creator @"
-   - "cardiologist instagram influencer health tips"
-   - site:tiktok.com "heart health" doctor
-   - site:instagram.com "MD" OR "DO" heart health nutrition
+1. UGC-FOCUSED (highest priority):
+   - site:collabstr.com health supplement UGC creator
+   - site:billo.app health wellness creator
+   - site:joinbrands.com supplement nutrition creator
+   - "ugc creator" "health" OR "supplements" OR "wellness" email
+   - "ugc" "supplement review" tiktok OR instagram
 
-2. LIST/ROUNDUP ARTICLES (bloggers who already compiled lists):
-   - "top 10 heart health doctors on tiktok 2025"
-   - "best cardiology influencers to follow"
-   - "health doctors on social media list"
+2. MICRO-CREATOR DISCOVERY (explicitly targeting small accounts):
+   - "heart health" tiktok creator "business inquiries" -huberman -berg
+   - "gut health creator" "50k" OR "30k" OR "20k" followers collab
+   - "doctor tiktok" "supplement" small creator
+   - "MD" OR "NP" OR "RD" tiktok health tips "link in bio" -million
 
-3. CREATOR DIRECTORIES & PLATFORMS:
-   - site:collabstr.com health doctor creator
-   - site:linkedin.com "cardiologist" "content creator" OR "influencer"
-   - "health creator" email collaboration contact
+3. LIST/ROUNDUP ARTICLES:
+   - "micro influencers" health wellness 2025 2026 list
+   - "underrated" health creators tiktok instagram to follow
+   - "small" OR "micro" doctor creators social media
 
-4. REDDIT & COMMUNITY DISCOVERY:
-   - site:reddit.com "who are good" heart health doctors tiktok
-   - site:reddit.com recommend health influencer supplements
+4. CREATOR PLATFORMS & DIRECTORIES:
+   - site:linkedin.com "health creator" OR "UGC creator" "open to collaborations"
+   - "health" "brand ambassador" "apply" supplement
 
-5. EMAIL/CONTACT EXTRACTION (find creators with visible contact info):
-   - "heart health" creator "business inquiries" email
-   - "heart health" influencer "collab" OR "partnership" contact
+5. COMMUNITY DISCOVERY:
+   - site:reddit.com "small" health creators recommend tiktok
+   - site:reddit.com UGC creator health supplements
 
-6. ADJACENT/UNEXPECTED SOURCES:
-   - "heart health" podcast host guest expert
-   - "cardiology" youtube "subscribe" health tips
-   - "heart health" newsletter author substack
+6. CONTACT-READY SIGNALS:
+   - "health creator" "DM for collabs" OR "business inquiries" OR "partnerships"
+   - "supplement review" creator "PR" OR "gifted" OR "collab" email
 
-The goal is to find SPECIFIC PEOPLE with their handles, emails, and profile links — not generic articles about heart health. Every query should be designed to surface actual creator profiles or lists of creators.
+The goal is to find ACCESSIBLE creators who would realistically work with a DTC supplement brand at $200-$3000 per deliverable. Skip the famous ones — we want the hidden gems.
 
 Return ONLY the JSON, no other text."""
 
@@ -468,9 +485,34 @@ class HashtagResearchProvider:
 # ─── AI ANALYZER ───
 
 ANALYZER_PROMPT = """You are analyzing raw web search results to extract individual creator/influencer profiles for Luma Nutrition.
-Luma sells premium supplements: Heart Health Bundle, Gut Health Protocol, Longevity Protocol.
+Luma is a DTC supplement brand selling: Heart Health Bundle, Gut Health Protocol, Longevity Protocol.
 
-YOUR CORE JOB: Extract INDIVIDUAL PEOPLE from these search results. Each result might mention 1 person, or a list article might mention 10. Extract every identifiable creator.
+YOUR CORE JOB: Extract INDIVIDUAL PEOPLE from these search results who would realistically partner with a DTC supplement brand at $200-$3,000 per deliverable.
+
+CRITICAL BUSINESS CONTEXT — WHO IS AND ISN'T VIABLE:
+
+IDEAL CREATORS (score 70-100):
+- UGC creators who make content-for-hire ($200-$1000/video) — these are the #1 priority
+- Micro doctors (5K-300K followers) — real MDs/DOs/NPs who make health content and do brand deals
+- Niche wellness creators (10K-300K) who actively partner with supplement/health brands
+- Gen Z health creators building audiences, open to gifted/paid partnerships
+- Mom/parenting health creators who review products
+- Anyone with "business inquiries", "DM for collabs", "PR friendly" in their bio
+
+AUTOMATICALLY SCORE LOW (below 30) AND FLAG:
+- Celebrity doctors: Andrew Huberman, Peter Attia, Rhonda Patrick, Dr. Berg, Dr. Oz, Mark Hyman, Dr. Mike, Dr. Pimple Popper, or anyone clearly famous
+- Anyone with 1M+ followers — they're too expensive and won't respond to cold outreach
+- Major podcast hosts with millions of listeners
+- Creators who only work with Fortune 500 / pharma brands
+- Pure entertainment accounts (comedy, drama) that don't discuss health/wellness
+- Generic health news sites, hospitals, or institutional accounts (not individual creators)
+
+SCORING SHOULD HEAVILY WEIGHT ACCESSIBILITY:
+- 90-100: Perfect — UGC creator or micro-influencer in health/wellness, visible contact info, does brand deals, 5K-200K followers, relevant credentials
+- 70-89: Strong — health/wellness creator 50K-500K, does partnerships, contactable, good content fit
+- 50-69: Maybe — right niche but unclear if accessible (no contact info, unclear if they do partnerships, 300K-800K followers)
+- 30-49: Unlikely — large following (500K-1M), no visible partnership signals, may be too expensive
+- Below 30: Skip — celebrity, 1M+ followers, institutional account, or completely wrong niche
 
 For each person you identify, extract AS MUCH as possible:
 
@@ -479,16 +521,19 @@ For each person you identify, extract AS MUCH as possible:
 3. **Contact**: Email addresses, business inquiry links, linktree/bio links, management/agency
 4. **Credentials**: MD, DO, NP, RD, PhD, certified trainer, etc.
 5. **Content focus**: What topics they create about
-6. **Audience signals**: Follower counts, subscriber counts (extract numbers from text like "500K followers")
-7. **Brand partnerships**: Any brands mentioned they work with
+6. **Audience signals**: Follower counts, subscriber counts (extract numbers from text)
+7. **Brand partnerships**: Any brands mentioned they work with — especially DTC/supplement brands
+8. **Partnership signals**: "business inquiries", "PR friendly", "DM for collabs", "brand ambassador", UGC in bio
+9. **Estimated rate**: If you can guess based on follower count (micro: $200-$800, mid: $800-$3000, macro: $3000+)
 
 IMPORTANT:
-- Look at URLs in search results — extract handles from profile URLs (e.g. tiktok.com/@drheartdoc → handle is @drheartdoc)
-- Look for emails in snippets (name@gmail.com, business@domain.com)
-- If a list article mentions "top 10 doctors", create 10 separate entries
+- Look at URLs in search results — extract handles from profile URLs
+- Look for emails in snippets
+- If a list article mentions multiple people, create separate entries for each
 - Extract follower counts from text like "500K followers" → 500000
-- If you see "collab" "partnership" "sponsored by" — note the brand in past partnerships
-- ALWAYS include source_urls so we can trace where you found each person
+- If you see "collab" "partnership" "sponsored by" — note the brand
+- ALWAYS include source_urls
+- In "content_fit_reasoning", explain WHY they'd work with Luma specifically — don't just say "good fit", say "does supplement reviews for mid-tier brands, has done partnerships with similar products, price range likely $500-$1000"
 
 Return a JSON array of analyzed profiles:
 [
@@ -498,28 +543,22 @@ Return a JSON array of analyzed profiles:
     "platform": "tiktok",
     "profile_url": "https://tiktok.com/@drjanesmith",
     "other_profiles": {"instagram": "@drjanesmith", "youtube": "DrJaneSmith"},
-    "bio": "Cardiologist sharing heart health tips...",
+    "bio": "Family medicine doc sharing heart health tips...",
     "email": "jane@drjanesmith.com",
-    "estimated_followers": 250000,
+    "estimated_followers": 45000,
     "estimated_engagement_rate": null,
-    "categories": ["Doctor", "Cardiologist", "Heart Health"],
-    "credentials": ["MD", "Board Certified Cardiologist"],
-    "past_partnerships": ["Brand X", "Brand Y"],
-    "relevance_score": 0-100,
-    "content_fit_reasoning": "Why they're a good/bad fit for Luma",
-    "red_flags": ["any concerns"],
-    "recommended_action": "save|investigate|skip",
+    "categories": ["Doctor", "Family Medicine", "Heart Health"],
+    "credentials": ["MD"],
+    "past_partnerships": ["Brand X supplement", "Brand Y vitamins"],
+    "relevance_score": 85,
+    "content_fit_reasoning": "Micro-doctor with 45K followers who reviews supplements. Has done paid partnerships with 2 other supplement brands. Likely rate: $500-$800 per video. Perfect for Luma Heart Health Bundle.",
+    "red_flags": [],
+    "recommended_action": "save",
     "source_urls": ["url where this info was found"]
   }
 ]
 
-Score relevance 0-100:
-- 90-100: Perfect fit (right niche, credentials verified, good audience, contactable)
-- 70-89: Strong fit (good match, worth pursuing)
-- 50-69: Possible fit (adjacent niche, needs more research)
-- Below 50: Weak fit or not enough info
-
-Be AGGRESSIVE about extraction. If you can see a handle, profile URL, or email anywhere in the data — grab it. The more contact info and social links you extract, the more useful this is.
+Be AGGRESSIVE about extraction but STRATEGIC about scoring. We want the hidden gems — the 30K follower doctor who'd love a $500 partnership, not the 5M follower celebrity who won't return our email.
 
 Return ONLY the JSON array, no other text."""
 
