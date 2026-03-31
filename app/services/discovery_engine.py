@@ -574,6 +574,19 @@ IMPORTANT RULES:
 - In content_fit_reasoning, be specific about WHY and include estimated rate
 - Always extract country when possible
 
+EXTRACTION — BE THOROUGH WITH THE DATA YOU HAVE:
+- URLs contain handles: tiktok.com/@drheartdoc → handle is @drheartdoc, platform is tiktok
+- Snippets contain emails: look for anything@domain.com patterns in every snippet
+- Snippets contain follower counts: "50K followers", "250,000 subscribers", "500k on TikTok" → extract the number
+- Snippets contain bios: "Family medicine doctor sharing..." → use as bio
+- If a creator appears in multiple search results, MERGE all the data into one entry
+- Look for "linktree", "linktr.ee", "beacons.ai" URLs — these often have email + all social links
+- Look for "business inquiries", "collabs", "partnerships", "PR", "booking" in snippets — these indicate accessibility
+- List articles ("Top 10 doctors on TikTok") should yield 10 separate entries, each with whatever handle/URL the article mentions
+- If you find an Instagram handle but the search was for TikTok, still include it — put it in other_profiles
+
+YOUR OUTPUT QUALITY IS JUDGED BY: how many creators have BOTH a social handle AND enough info (followers, bio, or email) to make an outreach decision. Empty cards with just a name are useless.
+
 Return ONLY the JSON array, no other text."""
 
 
@@ -781,49 +794,6 @@ class DiscoveryEngine:
             # Step 5: Sort by relevance and limit
             unique.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
             final = unique[:max_results]
-
-            # Step 5.5: Quick contact enrichment for top results
-            # For creators without email, do a fast web search to find contact info
-            search.status = "enriching_contacts"
-            await db.commit()
-
-            async def quick_contact_search(creator_data):
-                """Fast email/contact search for a single creator."""
-                if creator_data.get("email"):
-                    return creator_data  # Already has email
-                name = creator_data.get("name", "")
-                handle = creator_data.get("handle", "")
-                if not name and not handle:
-                    return creator_data
-                try:
-                    q = f'{handle or name} email contact business inquiries' if handle else f'"{name}" email health creator contact'
-                    results = await self.web.search([q], max_results_per_query=3)
-                    import re
-                    email_pattern = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
-                    found_emails = set()
-                    for r in results:
-                        text = f"{r.get('title','')} {r.get('snippet','')} {r.get('link','')}"
-                        found_emails.update(email_pattern.findall(text))
-                    junk = {'noreply','no-reply','info@','support@tiktok','support@instagram','example','sentry','abuse','privacy','legal','help@','contact@serper'}
-                    good_emails = [e for e in found_emails if not any(j in e.lower() for j in junk)]
-                    if good_emails:
-                        creator_data["email"] = good_emails[0]
-                        creator_data.setdefault("contact_source", "web_search")
-                except Exception as e:
-                    logger.debug(f"[Discovery] Quick contact search failed for {name}: {e}")
-                return creator_data
-
-            # Run contact search for top 5 only (keep it fast)
-            import asyncio
-            top_without_email = [c for c in final[:10] if not c.get("email")][:5]
-            if top_without_email:
-                try:
-                    contact_tasks = [quick_contact_search(c) for c in top_without_email]
-                    await asyncio.wait_for(asyncio.gather(*contact_tasks, return_exceptions=True), timeout=30)
-                except asyncio.TimeoutError:
-                    logger.warning("[Discovery] Contact enrichment timed out after 30s, continuing without")
-
-            logger.info(f"[Discovery] Contact enrichment done — {sum(1 for c in final if c.get('email'))} have emails")
 
             # ─── VALIDATION & CLEANUP before storing ───
             LEGIT_DOMAINS = {'tiktok.com','instagram.com','youtube.com','twitter.com','x.com','linkedin.com','facebook.com','threads.net'}

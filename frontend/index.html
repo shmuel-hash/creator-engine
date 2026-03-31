@@ -449,7 +449,7 @@
           {!strategy && !enrichCId && !enrichDone && !isDuplicate && (
             <div style={{marginTop:10}}>
               <button className="btn-terracotta" onClick={doEnrich} style={{width:'100%',justifyContent:'center',fontSize:12,padding:'7px 12px'}}>
-                {I.zap()} {isDiscoveryResult&&!c._saved?'Save & Enrich':'Enrich'}
+                {I.zap()} {isDiscoveryResult&&!c._saved?'Save & Find Contact':'Find Email & Strategy'}
               </button>
               {err&&<div style={{fontSize:11,color:'var(--red)',marginTop:4}}>{err}</div>}
             </div>
@@ -486,7 +486,7 @@
         {l:'UGC Health',q:'UGC creators specializing in health supplements'},
         {l:'Longevity',q:'longevity biohacking creators on YouTube'},
       ];
-      const statusLabels={starting:'Starting search...',parsing_intent:'Understanding your query...',searching:'Searching across platforms...',analyzing:'Analyzing and scoring creators...',enriching_contacts:'Finding contact info & emails...',complete:'Complete',failed:'Failed'};
+      const statusLabels={starting:'Starting search...',parsing_intent:'Understanding your query...',searching:'Searching across platforms...',analyzing:'Analyzing and scoring creators...',complete:'Complete',failed:'Failed'};
 
       const doSearch=async(q)=>{ if(!q.trim())return; setSearching(true);setError(null);setResults(null);setSearchStatus(null);clearInterval(pollRef.current);
         try { const d=await api('/discover',{method:'POST',body:{query:q,platforms:['tiktok','instagram','youtube'],max_results:resultCount}}); setSearchStatus({status:'starting'});
@@ -547,7 +547,7 @@
           {/* Progress */}
           {searching&&searchStatus&&<div className="card-warm fade-up" style={{padding:'20px 24px',marginTop:12,marginBottom:16}}>
             <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>{I.loader()}<span style={{fontSize:14,fontWeight:500}}>{statusLabels[searchStatus.status]||searchStatus.status}</span></div>
-            <div style={{height:3,background:'var(--border)',borderRadius:2,overflow:'hidden'}}><div style={{height:'100%',background:'var(--terracotta)',borderRadius:2,transition:'width 0.8s ease',width:searchStatus.status==='parsing_intent'?'20%':searchStatus.status==='searching'?'45%':searchStatus.status==='analyzing'?'70%':searchStatus.status==='enriching_contacts'?'90%':'10%'}}/></div>
+            <div style={{height:3,background:'var(--border)',borderRadius:2,overflow:'hidden'}}><div style={{height:'100%',background:'var(--terracotta)',borderRadius:2,transition:'width 0.8s ease',width:searchStatus.status==='parsing_intent'?'25%':searchStatus.status==='searching'?'55%':searchStatus.status==='analyzing'?'85%':'10%'}}/></div>
             <div style={{fontSize:11,fontFamily:'var(--font-mono)',color:'var(--text-muted)',marginTop:6}}>Usually takes 1-2 minutes.</div>
           </div>}
 
