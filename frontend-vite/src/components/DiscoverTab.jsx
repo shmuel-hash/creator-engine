@@ -64,12 +64,28 @@ export default function DiscoverTab() {
   const [deepSearching, setDeepSearching] = useState(false);
   const [brandHandles, setBrandHandles] = useState('');
   const [recentSearches, setRecentSearches] = useState([]);
+  const [searchStartTime, setSearchStartTime] = useState(null);
+  const [elapsed, setElapsed] = useState(0);
 
   const doctorMode = searchMode === 'doctor';
   const brandIntelMode = searchMode === 'brand_intel';
   const pollRef = useRef(null);
   const batchPollRef = useRef(null);
   const deepPollRef = useRef(null);
+  const timerRef = useRef(null);
+
+  // Elapsed timer — ticks every second while searching
+  useEffect(() => {
+    if ((searching || deepSearching) && searchStartTime) {
+      timerRef.current = setInterval(() => {
+        setElapsed(Math.floor((Date.now() - searchStartTime) / 1000));
+      }, 1000);
+      return () => clearInterval(timerRef.current);
+    } else {
+      setElapsed(0);
+      clearInterval(timerRef.current);
+    }
+  }, [searching, deepSearching, searchStartTime]);
 
   useEffect(() => { api('/creators', { params: { per_page: 500 } }).then(d => setExisting(d.creators || [])).catch(() => {}); }, []);
 
@@ -124,7 +140,7 @@ export default function DiscoverTab() {
 
   const handleCancel = () => {
     clearInterval(pollRef.current); clearInterval(deepPollRef.current);
-    setSearching(false); setDeepSearching(false); setSearchStatus(null);
+    setSearching(false); setDeepSearching(false); setSearchStatus(null); setSearchStartTime(null);
     if (results?.search_id) api(`/discover/${results.search_id}/cancel`, { method: 'POST' }).catch(() => {});
   };
 
@@ -141,7 +157,7 @@ export default function DiscoverTab() {
 
   const doSearch = async (q, brandOverride) => {
     if (!q.trim()) return;
-    setSearching(true); setError(null); setResults(null); setSearchStatus(null); setCredentialFilter(''); clearInterval(pollRef.current);
+    setSearching(true); setError(null); setResults(null); setSearchStatus(null); setCredentialFilter(''); setSearchStartTime(Date.now()); clearInterval(pollRef.current);
     const body = { query: q, platforms: ['tiktok', 'instagram', 'youtube'], max_results: resultCount, search_mode: searchMode };
     if (searchMode === 'brand_intel') {
       const handles = (brandOverride || brandHandles).split(',').map(h => h.trim()).filter(Boolean);
@@ -154,8 +170,8 @@ export default function DiscoverTab() {
         try {
           const st = await api(`/discover/${d.search_id}`);
           setSearchStatus(st);
-          if (st.status === 'complete') { clearInterval(pollRef.current); setResults(st); setSearching(false); api('/creators', { params: { per_page: 500 } }).then(d => setExisting(d.creators || [])).catch(() => {}); }
-          else if (st.status === 'failed') { clearInterval(pollRef.current); setError(st.error || 'Search failed'); setSearching(false); }
+          if (st.status === 'complete') { clearInterval(pollRef.current); setResults(st); setSearching(false); setSearchStartTime(null); api('/creators', { params: { per_page: 500 } }).then(d => setExisting(d.creators || [])).catch(() => {}); }
+          else if (st.status === 'failed') { clearInterval(pollRef.current); setError(st.error || 'Search failed'); setSearching(false); setSearchStartTime(null); }
         } catch (e) { /* ignore */ }
       }, 3000);
     } catch (e) { setError(e.message); setSearching(false); }
@@ -299,20 +315,53 @@ export default function DiscoverTab() {
         {error && <div style={{ padding: '12px 16px', background: 'var(--red-light)', borderRadius: 'var(--radius-xs)', color: 'var(--red)', fontSize: 13, marginBottom: 16, marginTop: 8 }}>{error}</div>}
 
         {/* Progress */}
-        {(searching || deepSearching) && searchStatus && (
-          <div className="card-warm fade-up" style={{ padding: '20px 24px', marginTop: 12, marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>{I.loader()}<span style={{ fontSize: 14, fontWeight: 500 }}>{statusLabels[searchStatus.status] || searchStatus.status}</span></div>
-              <button onClick={handleCancel} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-xs)', padding: '4px 12px', fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'var(--font-body)' }}>Cancel</button>
+        {(searching || deepSearching) && searchStatus && (() => {
+          const steps = deepSearching
+            ? [{ key: 'deep_searching', label: 'Digging deeper — LinkedIn, Reddit, agencies', est: 240 }]
+            : [
+              { key: 'starting', label: 'Starting search...', est: 3 },
+              { key: 'parsing_intent', label: 'Understanding your query...', est: 8 },
+              { key: 'searching', label: statusLabels.searching, est: 15 },
+              { key: 'analyzing', label: 'Analyzing and scoring creators...', est: 90 },
+            ];
+          const currentIdx = steps.findIndex(s => s.key === searchStatus.status);
+          const totalEst = steps.reduce((a, s) => a + s.est, 0);
+          const completedEst = steps.slice(0, Math.max(0, currentIdx)).reduce((a, s) => a + s.est, 0);
+          const currentStep = steps[currentIdx] || steps[steps.length - 1];
+          const stepProgress = currentStep ? Math.min(0.9, elapsed > 0 ? (elapsed - completedEst) / currentStep.est : 0) : 0;
+          const pct = Math.min(95, ((completedEst + (currentStep?.est || 0) * Math.max(0, stepProgress)) / totalEst) * 100);
+          const mins = Math.floor(elapsed / 60);
+          const secs = elapsed % 60;
+          const timeStr = mins > 0 ? `${mins}:${secs.toString().padStart(2, '0')}` : `${secs}s`;
+          const remainEst = Math.max(0, totalEst - elapsed);
+          const remainStr = remainEst > 60 ? `~${Math.ceil(remainEst / 60)} min left` : `~${remainEst}s left`;
+
+          return (
+            <div className="card-warm fade-up" style={{ padding: '20px 24px', marginTop: 12, marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {I.loader()}
+                  <span style={{ fontSize: 14, fontWeight: 500 }}>{currentStep?.label || searchStatus.status}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{timeStr}</span>
+                  <button onClick={handleCancel} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-xs)', padding: '4px 12px', fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'var(--font-body)' }}>Cancel</button>
+                </div>
+              </div>
+              <div style={{ height: 4, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{ height: '100%', background: 'var(--terracotta)', borderRadius: 2, transition: 'width 1s ease', width: `${pct}%` }} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                  {deepSearching ? 'Checking LinkedIn, Reddit, talent agencies...' : `Step ${Math.max(1, currentIdx + 1)} of ${steps.length}`}
+                </span>
+                <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                  {elapsed > 3 ? remainStr : ''}
+                </span>
+              </div>
             </div>
-            <div style={{ height: 3, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
-              <div style={{ height: '100%', background: 'var(--terracotta)', borderRadius: 2, transition: 'width 0.8s ease', width: searchStatus.status === 'parsing_intent' ? '25%' : searchStatus.status === 'searching' ? '55%' : searchStatus.status === 'analyzing' ? '85%' : searchStatus.status === 'deep_searching' ? '60%' : '10%' }} />
-            </div>
-            <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', marginTop: 6 }}>
-              {searchStatus.status === 'deep_searching' ? 'Finding harder-to-reach creators via LinkedIn, Reddit, and talent agencies. This takes 3-5 minutes.' : searchMode === 'brand_intel' ? 'Scraping tagged posts + web search. Usually takes 1-2 minutes.' : 'Usually takes 1-2 minutes.'}
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Results */}
         {results && (
