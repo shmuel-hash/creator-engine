@@ -1,78 +1,78 @@
-# Creator Discovery Engine — Handoff Script (Updated March 31, 2026, Session 3)
-## Paste this at the start of a new Claude chat to pick up where we left off
+# Creator Discovery Engine — Handoff (Updated March 31, 2026, End of Session 3)
 
----
+## CORE INSIGHT FROM THIS SESSION
+This is NOT a scraper — it's a **creator research tool for an influencer coordinator**. The coordinator needs to find creators, evaluate them in 5 seconds per card, and present the best ones to a creative strategist. Every feature should be judged by: "Does this help the coordinator make a faster, better decision?"
 
-## PROJECT OVERVIEW
-AI-powered **Creator Discovery Engine** for Luma Nutrition — finds accessible, partnership-ready creators (UGC, micro-doctors, niche wellness) across TikTok, Instagram, YouTube, and generates personalized outreach strategies. Focus on creators who would realistically work at $200-$3,000 per deliverable.
+## WHAT THE COORDINATOR NEEDS PER CARD
+1. Profile picture — instant vibe check
+2. Clickable handle → opens their actual TikTok/IG
+3. Real follower count
+4. 2-3 niche tags
+5. Email or contact method
+6. Estimated rate
 
-## WHAT'S BUILT & DEPLOYED
+## PROJECT
+- **GitHub:** https://github.com/shmuel-hash/creator-engine
+- **Live:** https://creator-engine-production.up.railway.app
+- **Stack:** Python 3.12, FastAPI, PostgreSQL (Railway), Serper.dev, Anthropic Claude, Apify
+- **Frontend:** Single index.html (React JSX + Babel), Warm Studio design
 
-### Backend (Python FastAPI + PostgreSQL on Railway)
-- **GitHub repo:** https://github.com/shmuel-hash/creator-engine
-- **Live URL:** https://creator-engine-production.up.railway.app
-- **Frontend:** https://creator-engine-production.up.railway.app/ (served from FastAPI)
-- **Swagger docs:** https://creator-engine-production.up.railway.app/docs
-- **Database:** 41+ creators imported from Excel + discovered ones, PostgreSQL on Railway
-- **Stack:** Python 3.12, FastAPI, SQLAlchemy async, Serper.dev (Google SERP), Anthropic Claude
+## WHAT WORKS
+- Discovery: natural language search → AI intent parsing → Serper web search → AI analysis/scoring → results
+- Enrichment: Apify profile scrape (real followers, bio, avatar) → email search → saves to DB
+- "Save & Enrich All" button — batch saves + enriches all results
+- Dedup against existing DB
+- Category filters (Creator Type + Content Niche)
+- Slide-out detail panel
+- Grid + List view
+- Profile pictures (from Apify), clickable handles, email quality indicator
+- Bulk delete (clear test data)
+- URL validation, fake email filtering, quality scoring gates
 
-### What's fully working (backend):
-- All CRUD endpoints (30+ API routes)
-- Excel/CSV import (auto-maps 37+ columns)
-- Async discovery pipeline with strategic targeting
-- Async enrichment pipeline with progress tracking + email conflict protection
-- Save & Find Contact combo endpoint
-- Standardized creator_type + content_niches categories
-- URL validation, fake email filtering, quality gates
-- ClickUp integration code, email templates, Gmail service (ready for OAuth)
-
-### Frontend (React JSX, Warm Studio design):
-- Warm Studio design — Instrument Serif + Plus Jakarta Sans, terracotta accent
-- Card-warm pattern with hover lift, slide-out detail panel, grid/list toggle
-- Category filters (Creator Type + Content Niche dropdowns)
-- Dedup against existing DB, enrichment progress bar, strategy panel
-- Email quality indicator, fake email detection, country display
+## API KEYS (Railway env vars)
+- ANTHROPIC_API_KEY ✅
+- SERPER_API_KEY ✅
+- APIFY_API_TOKEN ✅
+- CLICKUP_API_TOKEN ✅
+- DATABASE_URL ✅
 
 ## ARCHITECTURE
 ```
-FastAPI Backend (Railway)
-├── app/main.py
-├── app/api/routes.py (~925 lines)
-├── app/core/config.py, database.py
-├── app/models/models.py (8 tables), schemas.py
-├── app/services/
-│   ├── discovery_engine.py (~970 lines) — intent parsing, search, AI analysis, scoring
-│   ├── enrichment_service.py (~530 lines) — email finding, content analysis, outreach strategy
-│   ├── import_service.py, clickup_service.py, gmail_service.py
-├── app/scrapers/reddit_scraper.py, platform_scrapers.py
-└── frontend/index.html (React JSX with Babel, Warm Studio design)
+app/services/
+├── discovery_engine.py — search intent → web search → AI analysis → scoring → storage
+├── enrichment_service.py — Apify profile scrape → email search → save (2 steps, fast)
+├── apify_service.py — TikTok + Instagram profile/hashtag scraping via Apify API
+├── import_service.py, clickup_service.py, gmail_service.py
 ```
 
-## API KEYS (Railway env vars)
-- ANTHROPIC_API_KEY ✅, SERPER_API_KEY ✅, CLICKUP_API_TOKEN ✅, DATABASE_URL ✅
+## ENRICHMENT PIPELINE (2 steps, ~15-30 seconds)
+1. Apify profile scrape — real followers, bio, avatar URL, email, website
+2. Email search — web search fallback if Apify didn't find email
+(Content analysis and outreach strategy removed for speed — can be added as separate buttons)
 
-## STANDARDIZED CATEGORIES
-**Creator Types:** Doctor/Medical, UGC Creator, Health Influencer, Fitness Creator, Mom/Parenting, Wellness/Lifestyle, Nutritionist/Dietitian, Podcaster, Other
-**Content Niches:** Heart Health, Gut Health, Longevity, Supplements, Nutrition, Fitness, General Wellness, Weight Loss, Mental Health, Biohacking, Women's Health, Men's Health
+## KEY DESIGN DECISIONS
+- Discovery is FAST (~2 min) — uses Google search snippets, AI extracts what it can
+- Enrichment fills in the gaps — Apify gets real platform data
+- "Save & Enrich All" is the primary workflow — not one-at-a-time
+- Cards saved this session stay visible (not grayed as "In DB")
+- Scoring penalizes incomplete data: no handle = max 25, no handle + no followers = skip
 
-## LUMA NUTRITION CONTEXT
-- Products: Heart Health Bundle, Gut Health Protocol, Longevity Protocol, Sleep/Mood, Blood Sugar, NAD+, Berberine, NAC, Probiotic
-- Budget: $200-$3,000 per creator per deliverable
-- US-based creators preferred
-- 41 existing creators in DB
+## WHAT TO BUILD NEXT
 
-## DESIGN SYSTEM
-- Fonts: Instrument Serif (display), Plus Jakarta Sans (body), DM Mono (data)
-- Colors: Terracotta #C45D3E, Cream #FAF8F5, Sage #5E8B6A
-- Cards: card-warm, slide-out detail panel, grid/list toggle
-- Reference: CreatorFind Warm Studio design
+### High Priority
+1. **Doctor Discovery Mode** — specialized search queries for finding medical professionals with content presence. Search by credential + topic, not just "doctor creator". Target: Doximity profiles, podcast guest lists, LinkedIn, supplement-adjacent content.
+2. **Profile pics during discovery** — currently only shows after enrichment. Could construct TikTok/IG avatar URL directly from handle without Apify call.
+3. **Content samples** — show 1-2 recent video thumbnails or post images on the card
+4. **Country filter** — let coordinator filter by US/international
 
-## WHAT TO WORK ON NEXT (PRIORITY ORDER)
-1. Smarter enrichment — parse linktree/beacons pages, construct profile URLs from handle+platform
-2. Apify integration — TikTok/Instagram Profile Scraper for real data
-3. Profile resolution step — targeted searches to fill card gaps
-4. Profile pictures from platform profiles
-5. ClickUp Push to Pipeline button
-6. Gmail OAuth for sending outreach
-7. Country filter in search UI
-8. Sortable results (by score, followers, engagement)
+### Medium Priority
+5. **Outreach strategy as separate button** — "Generate Outreach" on enriched creators
+6. **ClickUp Push to Pipeline** — send vetted creators to ClickUp
+7. **Gmail OAuth** — send outreach emails from the app
+8. **Apify hashtag search** — search TikTok by hashtag to find creators by content topic
+9. **Better card layout** — show estimated rate, engagement rate when available
+
+### Future
+10. **Odyssey Scraper integration** — their Airtable base has a TikTok content scraper (videos + transcripts + engagement). Could wire up same approach.
+11. **Creator comparison view** — side-by-side for presenting to creative strategist
+12. **Bulk outreach** — send templated emails to multiple creators at once
