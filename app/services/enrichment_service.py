@@ -388,7 +388,7 @@ async def enrich_creator(
     """
     cid = str(creator.id)
     _update_status(cid,
-        status="scraping_profile", step=1, total_steps=4,
+        status="scraping_profile", step=1, total_steps=3,
         step_label="Pulling real profile data...",
         started_at=datetime.utcnow().isoformat(),
     )
@@ -524,48 +524,24 @@ async def enrich_creator(
     )
     enrichment["content_analysis"] = content_analysis
 
-    # Step 4: Generate outreach strategy
-    _update_status(cid,
-        status="generating_strategy", step=4,
-        step_label="Generating outreach strategy...",
-    )
-    logger.info(f"[Enrich] Generating outreach strategy for {handle}...")
-    creator_data = {
-        "name": creator.name,
-        "handle": handle,
-        "platform": platform,
-        "bio": creator.bio,
-        "categories": creator.categories,
-        "followers": creator.total_followers,
-        "engagement_rate": creator.engagement_rate,
-        "email": creator.email,
-        "profile_url": profile_url,
-        "quality_tier": str(creator.quality_tier),
-    }
-
-    strategy = await generate_outreach_strategy(creator_data, content_analysis)
-    enrichment["outreach_strategy"] = strategy
-
-    # Step 4: Update creator record
+    # Update creator record
     if not creator.ai_analysis:
         creator.ai_analysis = {}
 
     # Merge enrichment into ai_analysis
     existing = creator.ai_analysis if isinstance(creator.ai_analysis, dict) else {}
     existing["enrichment"] = enrichment
-    existing["outreach_strategy"] = strategy
     existing["last_enriched"] = datetime.utcnow().isoformat()
+
+    # Preserve apify data
+    if enrichment.get("apify_profile"):
+        existing["apify_profile"] = enrichment["apify_profile"]
+
     creator.ai_analysis = existing
 
-    # Update relevance score based on strategy
-    if strategy.get("brand_fit_score"):
-        creator.relevance_score = strategy["brand_fit_score"] * 10  # Convert 1-10 to 0-100
-
     # Add enrichment note
-    priority = strategy.get("priority_level", "unknown")
-    product = strategy.get("recommended_product", "unknown")
     note = CreatorNote(
-        content=f"Enrichment complete: Priority={priority}, Recommended product={product}, Brand fit={strategy.get('brand_fit_score', '?')}/10",
+        content=f"Enriched: {creator.total_followers or '?'} followers, email: {creator.email or 'not found'}",
         note_type="ai_analysis",
     )
     creator.notes.append(note)
@@ -576,18 +552,17 @@ async def enrich_creator(
     except Exception as commit_err:
         logger.error(f"[Enrich] DB commit failed: {commit_err}")
         await db.rollback()
-        # Try again without the email change if that was the issue
         try:
-            creator.email = None  # Reset email to avoid constraint violation
+            creator.email = None
             await db.commit()
             await db.refresh(creator)
         except Exception:
             await db.rollback()
-            _update_status(cid, status="failed", step=4, step_label="Database error", error=str(commit_err))
+            _update_status(cid, status="failed", step=3, step_label="Database error", error=str(commit_err))
             raise
 
     _update_status(cid,
-        status="complete", step=4,
+        status="complete", step=3,
         step_label="Enrichment complete",
         completed_at=datetime.utcnow().isoformat(),
         result=enrichment,

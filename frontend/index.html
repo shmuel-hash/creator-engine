@@ -445,16 +445,24 @@
             </div>}
           </div>
 
-          {/* Enrich button */}
-          {!strategy && !enrichCId && !enrichDone && !isDuplicate && (
+          {/* Enrich button or enriched state */}
+          {!enrichCId && !enrichDone && !isDuplicate && (
             <div style={{marginTop:10}}>
               <button className="btn-terracotta" onClick={doEnrich} style={{width:'100%',justifyContent:'center',fontSize:12,padding:'7px 12px'}}>
-                {I.zap()} {isDiscoveryResult&&!c._saved?'Save & Find Contact':'Find Email & Strategy'}
+                {I.zap()} {isDiscoveryResult&&!c._saved?'Save & Find Contact':'Find Contact'}
               </button>
               {err&&<div style={{fontSize:11,color:'var(--red)',marginTop:4}}>{err}</div>}
             </div>
           )}
-          {strategy && <div style={{marginTop:10}}><Pill color="var(--sage)" bg="var(--sage-light)">{I.check()} Strategy ready</Pill></div>}
+          {enrichDone && (
+            <div style={{marginTop:10,padding:'10px 12px',background:'var(--sage-light)',borderRadius:'var(--radius-xs)',border:'1px solid var(--sage)'}}>
+              <div style={{fontSize:11,fontWeight:600,color:'var(--sage)',marginBottom:6,display:'flex',alignItems:'center',gap:4}}>{I.check()} Enriched</div>
+              {c.email && <div style={{fontSize:11,fontFamily:'var(--font-mono)',color:'var(--text-secondary)',marginBottom:4}}>{I.mail()} {c.email}</div>}
+              {c.total_followers && <div style={{fontSize:11,color:'var(--text-secondary)',marginBottom:4}}>{fmtNum(c.total_followers)} followers</div>}
+              {c.bio && <div style={{fontSize:11,color:'var(--text-muted)',lineHeight:1.5,maxHeight:40,overflow:'hidden'}}>{c.bio}</div>}
+              <button onClick={(e)=>{e.stopPropagation();onSelect&&onSelect(c);}} style={{marginTop:6,background:'none',border:'none',cursor:'pointer',fontSize:11,color:'var(--terracotta)',fontWeight:600,padding:0}}>View full profile →</button>
+            </div>
+          )}
           {enrichCId && <div style={{marginTop:8}}><EnrichmentProgress creatorId={enrichCId} onComplete={onEnrichDone}/></div>}
         </div>
       </div>;
