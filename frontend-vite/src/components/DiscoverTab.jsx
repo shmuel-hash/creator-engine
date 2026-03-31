@@ -317,12 +317,12 @@ export default function DiscoverTab() {
         {/* Progress */}
         {(searching || deepSearching) && searchStatus && (() => {
           const steps = deepSearching
-            ? [{ key: 'deep_searching', label: 'Digging deeper — LinkedIn, Reddit, agencies', est: 240 }]
+            ? [{ key: 'deep_searching', label: 'Digging deeper — LinkedIn, Reddit, agencies', est: 300 }]
             : [
-              { key: 'starting', label: 'Starting search...', est: 3 },
-              { key: 'parsing_intent', label: 'Understanding your query...', est: 8 },
-              { key: 'searching', label: statusLabels.searching, est: 15 },
-              { key: 'analyzing', label: 'Analyzing and scoring creators...', est: 90 },
+              { key: 'starting', label: 'Starting search...', est: 5 },
+              { key: 'parsing_intent', label: 'Understanding your query...', est: 10 },
+              { key: 'searching', label: statusLabels.searching, est: 20 },
+              { key: 'analyzing', label: 'Analyzing and scoring creators...', est: 120 },
             ];
           const currentIdx = steps.findIndex(s => s.key === searchStatus.status);
           const totalEst = steps.reduce((a, s) => a + s.est, 0);
@@ -334,7 +334,7 @@ export default function DiscoverTab() {
           const secs = elapsed % 60;
           const timeStr = mins > 0 ? `${mins}:${secs.toString().padStart(2, '0')}` : `${secs}s`;
           const remainEst = Math.max(0, totalEst - elapsed);
-          const remainStr = remainEst > 60 ? `~${Math.ceil(remainEst / 60)} min left` : `~${remainEst}s left`;
+          const remainLabel = remainEst <= 0 ? 'Almost done...' : remainEst > 60 ? `~${Math.ceil(remainEst / 60)} min left` : `~${remainEst}s left`;
 
           return (
             <div className="card-warm fade-up" style={{ padding: '20px 24px', marginTop: 12, marginBottom: 16 }}>
@@ -356,7 +356,7 @@ export default function DiscoverTab() {
                   {deepSearching ? 'Checking LinkedIn, Reddit, talent agencies...' : `Step ${Math.max(1, currentIdx + 1)} of ${steps.length}`}
                 </span>
                 <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
-                  {elapsed > 3 ? remainStr : ''}
+                  {elapsed > 3 ? remainLabel : ''}
                 </span>
               </div>
             </div>
