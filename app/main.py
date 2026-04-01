@@ -2,6 +2,7 @@
 Creator Discovery Engine — Main Application
 """
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
@@ -12,6 +13,18 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import get_settings
 from app.core.database import engine, Base
 from app.api.routes import router
+
+# ─── LOGGING ───
+# Configure root logger so all app.* loggers output to stdout
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-5s [%(name)s] %(message)s",
+    datefmt="%H:%M:%S",
+)
+# Quiet down noisy libraries
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
 settings = get_settings()
 

@@ -320,9 +320,9 @@ export default function DiscoverTab() {
             ? [{ key: 'deep_searching', label: 'Digging deeper — LinkedIn, Reddit, agencies', est: 300 }]
             : [
               { key: 'starting', label: 'Starting search...', est: 5 },
-              { key: 'parsing_intent', label: 'Understanding your query...', est: 10 },
-              { key: 'searching', label: statusLabels.searching, est: 20 },
-              { key: 'analyzing', label: 'Analyzing and scoring creators...', est: 120 },
+              { key: 'parsing_intent', label: 'Understanding your query...', est: 15 },
+              { key: 'searching', label: statusLabels.searching, est: 30 },
+              { key: 'analyzing', label: 'Analyzing and scoring creators...', est: 250 },
             ];
           const currentIdx = steps.findIndex(s => s.key === searchStatus.status);
           const totalEst = steps.reduce((a, s) => a + s.est, 0);
