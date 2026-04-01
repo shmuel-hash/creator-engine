@@ -13,6 +13,7 @@ export default function DetailPanel() {
   const [pushed, setPushed] = useState(false);
   const [pushResult, setPushResult] = useState(null);
   const [pushErr, setPushErr] = useState(null);
+  const [copied, setCopied] = useState(null);
 
   if (!selected) return null;
 
@@ -34,7 +35,6 @@ export default function DetailPanel() {
 
   const hasFollowers = platforms.some(p => p.f) || c.engagement_rate;
 
-  const [copied, setCopied] = useState(null);
   const copy = (text, k) => { navigator.clipboard.writeText(text); setCopied(k); setTimeout(() => setCopied(null), 2000); };
 
   const handleAddToPipeline = async () => {
