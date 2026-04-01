@@ -508,3 +508,20 @@ class ClickUpService:
 
         logger.info(f"[ClickUp] Fetched {len(all_creators)} creators from pipeline")
         return all_creators
+
+    async def update_task_email(self, task_id: str, email: str) -> bool:
+        """Update the Email custom field on an existing ClickUp task."""
+        try:
+            response = await self.client.post(
+                f"{self.base_url}/task/{task_id}/field/e2b74079-1904-4eb7-bb37-4b1655484618",
+                json={"value": email},
+            )
+            if response.status_code == 200:
+                logger.info(f"[ClickUp] Updated email on task {task_id}: {email}")
+                return True
+            else:
+                logger.error(f"[ClickUp] Email update failed on {task_id}: {response.status_code} {response.text}")
+                return False
+        except Exception as e:
+            logger.error(f"[ClickUp] Email update error: {e}")
+            return False

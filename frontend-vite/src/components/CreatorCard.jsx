@@ -5,17 +5,19 @@ import Pill from './Pill';
 import Avatar from './Avatar';
 import ScoreRing from './ScoreRing';
 
-export default function CreatorCard({ creator, isDiscoveryResult, isDuplicate, pipelineStatus, onAddToPipeline, onSelect, delay = 0 }) {
+export default function CreatorCard({ creator, isDiscoveryResult, isDuplicate, pipelineStatus, onAddToPipeline, onDismissPipeline, onSelect, delay = 0 }) {
   const [local, setLocal] = useState(creator);
   const [pushing, setPushing] = useState(false);
-  const [pushed, setPushed] = useState(!!pipelineStatus);
-  const [pushResult, setPushResult] = useState(pipelineStatus ? { task_url: pipelineStatus.task_url } : null);
+  const [pushed, setPushed] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const [pushResult, setPushResult] = useState(null);
   const [err, setErr] = useState(null);
   const c = local;
   const ai = c.ai_analysis || {};
   const creds = ai.credentials || [];
 
-  // Build platform list
+  const effectivePipeline = dismissed ? null : (pushed ? { status: 'discovery', task_url: pushResult?.task_url } : pipelineStatus);
+
   const platforms = [];
   if (c.tiktok_handle || c.tiktok_url) platforms.push({ n: 'tiktok', h: c.tiktok_handle, f: c.tiktok_followers });
   if (c.instagram_handle || c.instagram_url) platforms.push({ n: 'instagram', h: c.instagram_handle, f: c.instagram_followers });
@@ -37,46 +39,43 @@ export default function CreatorCard({ creator, isDiscoveryResult, isDuplicate, p
   const avatarSrc = ai.avatar_url || ai.apify_profile?.avatar_url || null;
 
   const handleAddToPipeline = async (ev) => {
-    ev.stopPropagation();
-    setErr(null);
-    setPushing(true);
+    ev.stopPropagation(); setErr(null); setPushing(true);
     try {
       const resp = await api(`/discover/results/${c.id}/add-to-pipeline`, { method: 'POST' });
-      setPushed(true);
-      setPushResult(resp.clickup);
+      setPushed(true); setDismissed(false); setPushResult(resp.clickup);
       setLocal(prev => ({ ...prev, _saved: true }));
       if (onAddToPipeline) onAddToPipeline(c, resp);
-    } catch (error) {
-      setErr(error.message);
-      console.error('[AddToPipeline]', c.name, error.message);
-    }
+    } catch (error) { setErr(error.message); }
     setPushing(false);
   };
 
-  // Determine pipeline status label
-  const getPipelineLabel = () => {
-    if (pipelineStatus?.status) {
-      const s = pipelineStatus.status.toLowerCase();
-      if (s === 'open' || s === 'to do') return 'In Pipeline';
-      if (s === 'in progress') return 'Outreach Sent';
-      if (s === 'review') return 'In Review';
-      if (s === 'complete' || s === 'closed') return 'Contracted';
-      return pipelineStatus.status;
-    }
-    return 'In Pipeline';
+  const handleDismiss = (ev) => {
+    ev.stopPropagation(); setDismissed(true); setPushed(false); setPushResult(null);
+    if (onDismissPipeline) onDismissPipeline(c);
   };
+
+  const getPipelineLabel = () => {
+    if (!effectivePipeline?.status) return 'In Pipeline';
+    const s = effectivePipeline.status.toLowerCase();
+    if (s === 'open' || s === 'to do' || s === 'discovery') return 'In Pipeline';
+    if (s === 'in progress' || s === 'outreached') return 'Outreach Sent';
+    if (s === 'review' || s === 'interested') return 'Interested';
+    if (s === 'complete' || s === 'closed') return 'Contracted';
+    if (s === 'discard') return 'Discarded';
+    return effectivePipeline.status;
+  };
+
+  const hasFollowers = platforms.some(p => p.f);
 
   return (
     <div className="card-warm" style={{ opacity: isDuplicate ? 0.5 : 1, animationDelay: `${delay * 40}ms` }} onClick={() => onSelect && onSelect(c)}>
-      {/* Cover gradient */}
       <div style={{ height: 56, background: isDuplicate ? 'var(--bg-muted)' : 'linear-gradient(135deg, var(--terracotta-light) 0%, var(--peach) 60%, var(--sage-light) 100%)', position: 'relative' }}>
         {c.relevance_score != null && <div style={{ position: 'absolute', top: 8, right: 8 }}><ScoreRing score={c.relevance_score} size={36} /></div>}
         {isDuplicate && <div style={{ position: 'absolute', top: 8, left: 8 }}><Pill color="var(--amber)" bg="var(--amber-light)">{I.database()} In DB</Pill></div>}
-        {(pushed || pipelineStatus) && !isDuplicate && <div style={{ position: 'absolute', top: 8, left: 8 }}><Pill color="white" bg="var(--sage)">{I.check()} {getPipelineLabel()}</Pill></div>}
+        {effectivePipeline && !isDuplicate && <div style={{ position: 'absolute', top: 8, left: 8 }}><Pill color="white" bg="var(--sage)">{I.check()} {getPipelineLabel()}</Pill></div>}
       </div>
 
       <div style={{ padding: '0 16px 16px', cursor: 'pointer' }}>
-        {/* Avatar overlapping cover */}
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, marginTop: -22, marginBottom: 10 }}>
           <div style={{ border: '3px solid var(--bg-card)', borderRadius: '50%', flexShrink: 0 }}>
             <Avatar name={c.name} size={44} src={avatarSrc} />
@@ -93,7 +92,6 @@ export default function CreatorCard({ creator, isDiscoveryResult, isDuplicate, p
           </div>
         </div>
 
-        {/* Type + Credentials + Niches */}
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
           {ai.credential_tier === 'physician' && <Pill color="white" bg="#2563eb" style={{ fontSize: 10, fontWeight: 700 }}>MD/DO</Pill>}
           {ai.credential_tier === 'allied' && <Pill color="white" bg="#7c3aed" style={{ fontSize: 10, fontWeight: 700 }}>Allied Health</Pill>}
@@ -113,27 +111,36 @@ export default function CreatorCard({ creator, isDiscoveryResult, isDuplicate, p
           {!platforms.length && !c.handle && <Pill color="var(--red)" bg="var(--red-light)" style={{ fontSize: 10 }}>{I.alert()} No social</Pill>}
         </div>
 
-        {/* Stats row */}
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(platforms.length + 1, 3)},1fr)`, gap: 6, paddingTop: 10, borderTop: '1px solid var(--border-light)' }}>
-          {platforms.slice(0, 2).map((p, i) => (
-            <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                <span style={{ color: PLAT[p.n]?.c, fontWeight: 700, fontSize: 10 }}>{PLAT[p.n]?.a || '?'}</span>
-                <span style={{ fontSize: 12, fontWeight: 700 }}>{fmtNum(p.f)}</span>
+        {/* Stats row - only show if there are actual follower counts */}
+        {hasFollowers && (
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(platforms.filter(p=>p.f).length + (c.engagement_rate ? 1 : 0), 3)},1fr)`, gap: 6, paddingTop: 10, borderTop: '1px solid var(--border-light)' }}>
+            {platforms.filter(p => p.f).map((p, i) => (
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                  <span style={{ color: PLAT[p.n]?.c, fontWeight: 700, fontSize: 10 }}>{PLAT[p.n]?.a || '?'}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700 }}>{fmtNum(p.f)}</span>
+                </div>
+                <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>followers</span>
               </div>
-              <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>followers</span>
-            </div>
-          ))}
-          {c.engagement_rate && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-              <span style={{ fontSize: 12, fontWeight: 700 }}>{c.engagement_rate}%</span>
-              <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>engage</span>
-            </div>
-          )}
-        </div>
+            ))}
+            {c.engagement_rate && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                <span style={{ fontSize: 12, fontWeight: 700 }}>{c.engagement_rate}%</span>
+                <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>engage</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Email if found */}
+        {c.email && (
+          <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            {I.mail()} {c.email}
+          </div>
+        )}
 
         {/* Add to Pipeline button */}
-        {isDiscoveryResult && !pushed && !pipelineStatus && !isDuplicate && (
+        {isDiscoveryResult && !effectivePipeline && !isDuplicate && (
           <div style={{ marginTop: 10 }}>
             <button className="btn-terracotta" onClick={handleAddToPipeline} disabled={pushing} style={{ width: '100%', justifyContent: 'center', fontSize: 12, padding: '7px 12px' }}>
               {pushing ? I.loader() : I.zap()} {pushing ? 'Adding...' : 'Add to Pipeline'}
@@ -143,19 +150,14 @@ export default function CreatorCard({ creator, isDiscoveryResult, isDuplicate, p
         )}
 
         {/* Pipeline success state */}
-        {(pushed || pipelineStatus) && !isDuplicate && (
+        {effectivePipeline && !isDuplicate && (
           <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--sage-light)', borderRadius: 'var(--radius-xs)', border: '1px solid var(--sage)' }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--sage)', display: 'flex', alignItems: 'center', gap: 4 }}>
-              {I.check()} {getPipelineLabel()}
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--sage)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>{I.check()} {getPipelineLabel()}</span>
+              <button onClick={handleDismiss} title="Remove badge" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0 2px', fontSize: 14, lineHeight: 1 }}>×</button>
             </div>
-            {(pushResult?.task_url || pipelineStatus?.task_url) && (
-              <a
-                href={pushResult?.task_url || pipelineStatus?.task_url}
-                target="_blank"
-                rel="noopener"
-                onClick={e => e.stopPropagation()}
-                style={{ fontSize: 10, color: 'var(--terracotta)', marginTop: 4, display: 'inline-block', textDecoration: 'none' }}
-              >
+            {effectivePipeline.task_url && (
+              <a href={effectivePipeline.task_url} target="_blank" rel="noopener" onClick={e => e.stopPropagation()} style={{ fontSize: 10, color: 'var(--terracotta)', marginTop: 4, display: 'inline-block', textDecoration: 'none' }}>
                 Open in ClickUp →
               </a>
             )}

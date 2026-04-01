@@ -59,6 +59,42 @@ async def _background_enrich(creator_id: UUID):
             logger.error(f"Enrichment failed for {creator_id}: {e}")
 
 
+async def _background_enrich_and_sync(creator_id: UUID, clickup_task_id: str = None):
+    """
+    Background: enrich creator (find email, scrape profile) then update ClickUp task.
+    Runs after add-to-pipeline so the coordinator gets instant feedback while
+    the email search happens in the background.
+    """
+    from app.core.database import async_session_factory
+    from app.services.enrichment_service import enrich_creator, _update_status
+    from sqlalchemy.orm import selectinload
+
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(Creator).where(Creator.id == creator_id).options(selectinload(Creator.notes))
+        )
+        creator_obj = result.scalar_one_or_none()
+        if not creator_obj:
+            return
+
+        try:
+            await enrich_creator(creator_obj, session)
+            logger.info(f"[Pipeline] Enrichment complete for {creator_obj.name}, email: {creator_obj.email or 'not found'}")
+
+            # If we found an email and have a ClickUp task, update it
+            if creator_obj.email and clickup_task_id:
+                service = ClickUpService()
+                await service.update_task_email(clickup_task_id, creator_obj.email)
+
+        except Exception as e:
+            _update_status(str(creator_id),
+                status="failed",
+                error=str(e),
+                step_label=f"Failed: {str(e)[:100]}",
+            )
+            logger.error(f"[Pipeline] Enrichment failed for {creator_id}: {e}")
+
+
 # ─── CREATOR CRUD ───
 
 @router.get("/creators", response_model=CreatorListResponse)
@@ -505,8 +541,10 @@ async def save_discovery_result(result_id: UUID, db: AsyncSession = Depends(get_
 async def add_to_pipeline(result_id: UUID, db: AsyncSession = Depends(get_db)):
     """
     Add a discovery result directly to ClickUp Creator Pipeline (Discovery status).
-    Saves as creator in DB and pushes to ClickUp in one step.
+    Saves as creator in DB, pushes to ClickUp, then kicks off background email search.
     """
+    import asyncio
+
     # Get the discovery result
     result = await db.get(DiscoveryResult, result_id)
     if not result:
@@ -534,13 +572,18 @@ async def add_to_pipeline(result_id: UUID, db: AsyncSession = Depends(get_db)):
     }
     clickup_result = await service.push_discovery_result(result_data)
 
+    clickup_task_id = None
     if clickup_result:
+        clickup_task_id = clickup_result["task_id"]
         # Store ClickUp reference on creator
-        creator.clickup_task_id = clickup_result["task_id"]
+        creator.clickup_task_id = clickup_task_id
         creator.clickup_list = "Creator Pipeline"
         creator.clickup_synced_at = datetime.utcnow()
         creator.pipeline_stage = "prospect"
         await db.commit()
+
+    # Kick off background enrichment (email search) + ClickUp email update
+    asyncio.create_task(_background_enrich_and_sync(creator.id, clickup_task_id))
 
     return {
         "success": True,
