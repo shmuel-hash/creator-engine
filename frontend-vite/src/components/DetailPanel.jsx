@@ -1,5 +1,5 @@
 import React, { useState, useContext } from 'react';
-import { PLAT, fmtNum } from '../utils/api';
+import { api, PLAT, fmtNum } from '../utils/api';
 import { I } from './Icons';
 import Pill from './Pill';
 import Avatar from './Avatar';
@@ -9,6 +9,11 @@ import { DetailCtx } from './DetailContext';
 
 export default function DetailPanel() {
   const { selected, setSelected } = useContext(DetailCtx);
+  const [pushing, setPushing] = useState(false);
+  const [pushed, setPushed] = useState(false);
+  const [pushResult, setPushResult] = useState(null);
+  const [pushErr, setPushErr] = useState(null);
+
   if (!selected) return null;
 
   const c = selected;
@@ -17,6 +22,9 @@ export default function DetailPanel() {
   const creds = ai.credentials || [];
   const partnerships = ai.past_partnerships || [];
 
+  // Detect if this is a discovery result (has search-result-like shape, not a saved creator)
+  const isDiscoveryResult = !c._saved && !c.pipeline_stage && !c.created_at;
+
   const platforms = [];
   if (c.tiktok_handle || c.tiktok_url) platforms.push({ n: 'tiktok', h: c.tiktok_handle, u: c.tiktok_url, f: c.tiktok_followers });
   if (c.instagram_handle || c.instagram_url) platforms.push({ n: 'instagram', h: c.instagram_handle, u: c.instagram_url, f: c.instagram_followers });
@@ -24,8 +32,22 @@ export default function DetailPanel() {
   if (c.twitter_handle || c.twitter_url) platforms.push({ n: 'twitter', h: c.twitter_handle, u: c.twitter_url, f: c.twitter_followers });
   if (platforms.length === 0 && (c.handle || c.profile_url)) platforms.push({ n: c.platform || 'unknown', h: c.handle, u: c.profile_url, f: c.followers });
 
+  const hasFollowers = platforms.some(p => p.f) || c.engagement_rate;
+
   const [copied, setCopied] = useState(null);
   const copy = (text, k) => { navigator.clipboard.writeText(text); setCopied(k); setTimeout(() => setCopied(null), 2000); };
+
+  const handleAddToPipeline = async () => {
+    setPushErr(null); setPushing(true);
+    try {
+      const resp = await api(`/discover/results/${c.id}/add-to-pipeline`, { method: 'POST' });
+      setPushed(true);
+      setPushResult(resp.clickup);
+    } catch (error) {
+      setPushErr(error.message);
+    }
+    setPushing(false);
+  };
 
   return (
     <>
@@ -83,23 +105,25 @@ export default function DetailPanel() {
           {/* Bio */}
           {c.bio && <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: 16 }}>{c.bio}</p>}
 
-          {/* Stats grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 20 }}>
-            {platforms.map((p, i) => (
-              <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '12px 8px', background: 'var(--bg-muted)', borderRadius: 'var(--radius-sm)' }}>
-                <span style={{ color: PLAT[p.n]?.c || 'var(--text-secondary)', fontWeight: 700, fontSize: 12 }}>{PLAT[p.n]?.a || p.n.slice(0, 2).toUpperCase()}</span>
-                <span style={{ fontSize: 14, fontWeight: 700 }}>{fmtNum(p.f)}</span>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>followers</span>
-              </div>
-            ))}
-            {c.engagement_rate && (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '12px 8px', background: 'var(--bg-muted)', borderRadius: 'var(--radius-sm)' }}>
-                <span style={{ color: 'var(--sage)' }}>{I.trendUp()}</span>
-                <span style={{ fontSize: 14, fontWeight: 700 }}>{c.engagement_rate}%</span>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>engagement</span>
-              </div>
-            )}
-          </div>
+          {/* Stats grid - only show if there are actual values */}
+          {hasFollowers && (
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(platforms.filter(p=>p.f).length + (c.engagement_rate ? 1 : 0), 3)},1fr)`, gap: 8, marginBottom: 20 }}>
+              {platforms.filter(p => p.f).map((p, i) => (
+                <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '12px 8px', background: 'var(--bg-muted)', borderRadius: 'var(--radius-sm)' }}>
+                  <span style={{ color: PLAT[p.n]?.c || 'var(--text-secondary)', fontWeight: 700, fontSize: 12 }}>{PLAT[p.n]?.a || p.n.slice(0, 2).toUpperCase()}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>{fmtNum(p.f)}</span>
+                  <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>followers</span>
+                </div>
+              ))}
+              {c.engagement_rate && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '12px 8px', background: 'var(--bg-muted)', borderRadius: 'var(--radius-sm)' }}>
+                  <span style={{ color: 'var(--sage)' }}>{I.trendUp()}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>{c.engagement_rate}%</span>
+                  <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>engagement</span>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Platforms links */}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -107,6 +131,22 @@ export default function DetailPanel() {
               <a key={i} href={p.u} target="_blank" rel="noopener" className="btn-ghost" style={{ fontSize: 11, padding: '5px 12px' }}>{PLAT[p.n]?.l || p.n} {I.ext()}</a>
             ))}
           </div>
+
+          {/* Add to Pipeline button (discovery results only) */}
+          {isDiscoveryResult && !pushed && (
+            <div style={{ marginBottom: 16 }}>
+              <button className="btn-terracotta" onClick={handleAddToPipeline} disabled={pushing} style={{ width: '100%', justifyContent: 'center', fontSize: 13, padding: '10px 16px' }}>
+                {pushing ? I.loader() : I.zap()} {pushing ? 'Adding...' : 'Add to Pipeline'}
+              </button>
+              {pushErr && <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 4, padding: '4px 8px', background: 'var(--red-light)', borderRadius: 4 }}>{pushErr}</div>}
+            </div>
+          )}
+          {pushed && pushResult && (
+            <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--sage-light)', borderRadius: 'var(--radius-xs)', border: '1px solid var(--sage)' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--sage)', display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>{I.check()} Added to Pipeline</div>
+              <a href={pushResult.task_url} target="_blank" rel="noopener" style={{ fontSize: 11, color: 'var(--terracotta)', textDecoration: 'none' }}>Open in ClickUp →</a>
+            </div>
+          )}
 
           {/* AI Analysis */}
           {(ai.content_fit || partnerships.length > 0 || ai.red_flags?.length > 0) && (
