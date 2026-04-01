@@ -345,10 +345,10 @@ async def discover_creators(
     if follower_min_val or follower_max_val:
         range_parts = []
         if follower_min_val:
-            range_parts.append(f"minimum {follower_min_val:,} followers")
+            range_parts.append(f"at least {follower_min_val:,} followers")
         if follower_max_val:
-            range_parts.append(f"maximum {follower_max_val:,} followers")
-        ai_query_text = f"{query_text} (IMPORTANT: only find creators with {' and '.join(range_parts)})"
+            range_parts.append(f"preferably under {follower_max_val:,} followers")
+        ai_query_text = f"{query_text} (Preference: {' and '.join(range_parts)}, but include good matches even if follower count is unknown)"
 
     # Run discovery in background
     async def _run_discovery():
@@ -1379,4 +1379,4 @@ async def bulk_enrich(
             results["details"].append({"name": creator.name, "error": str(e)})
 
     return results
-
+ 
