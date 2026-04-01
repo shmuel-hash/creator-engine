@@ -504,7 +504,7 @@ async def save_discovery_result(result_id: UUID, db: AsyncSession = Depends(get_
 @router.post("/discover/results/{result_id}/add-to-pipeline")
 async def add_to_pipeline(result_id: UUID, db: AsyncSession = Depends(get_db)):
     """
-    Add a discovery result directly to ClickUp Creator Pool.
+    Add a discovery result directly to ClickUp Creator Pipeline (Discovery status).
     Saves as creator in DB and pushes to ClickUp in one step.
     """
     # Get the discovery result
@@ -537,7 +537,7 @@ async def add_to_pipeline(result_id: UUID, db: AsyncSession = Depends(get_db)):
     if clickup_result:
         # Store ClickUp reference on creator
         creator.clickup_task_id = clickup_result["task_id"]
-        creator.clickup_list = "Creator Pool"
+        creator.clickup_list = "Creator Pipeline"
         creator.clickup_synced_at = datetime.utcnow()
         creator.pipeline_stage = "prospect"
         await db.commit()

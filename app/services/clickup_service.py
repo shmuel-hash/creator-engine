@@ -418,12 +418,13 @@ class ClickUpService:
         payload = {
             "name": task_name,
             "description": "\n".join(desc_parts),
+            "status": "discovery",
             "custom_fields": custom_fields,
         }
 
         try:
             response = await self.client.post(
-                f"{self.base_url}/list/{CREATOR_POOL_LIST_ID}/task",
+                f"{self.base_url}/list/{CREATOR_PIPELINE_LIST_ID}/task",
                 json=payload,
             )
 
@@ -431,7 +432,7 @@ class ClickUpService:
                 task_data = response.json()
                 task_id = task_data.get("id")
                 task_url = task_data.get("url", f"https://app.clickup.com/t/{task_id}")
-                logger.info(f"[ClickUp] Pushed discovery result '{name}' to Creator Pool: {task_id}")
+                logger.info(f"[ClickUp] Pushed discovery result '{name}' to Creator Pipeline: {task_id}")
                 return {"task_id": task_id, "task_url": task_url}
             else:
                 logger.error(f"[ClickUp] Push failed: {response.status_code} {response.text}")

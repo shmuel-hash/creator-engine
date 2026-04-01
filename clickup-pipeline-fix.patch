@@ -1,0 +1,50 @@
+diff --git a/app/api/routes.py b/app/api/routes.py
+index 6f9fff0..62cbe51 100644
+--- a/app/api/routes.py
++++ b/app/api/routes.py
+@@ -504,7 +504,7 @@ async def save_discovery_result(result_id: UUID, db: AsyncSession = Depends(get_
+ @router.post("/discover/results/{result_id}/add-to-pipeline")
+ async def add_to_pipeline(result_id: UUID, db: AsyncSession = Depends(get_db)):
+     """
+-    Add a discovery result directly to ClickUp Creator Pool.
++    Add a discovery result directly to ClickUp Creator Pipeline (Discovery status).
+     Saves as creator in DB and pushes to ClickUp in one step.
+     """
+     # Get the discovery result
+@@ -537,7 +537,7 @@ async def add_to_pipeline(result_id: UUID, db: AsyncSession = Depends(get_db)):
+     if clickup_result:
+         # Store ClickUp reference on creator
+         creator.clickup_task_id = clickup_result["task_id"]
+-        creator.clickup_list = "Creator Pool"
++        creator.clickup_list = "Creator Pipeline"
+         creator.clickup_synced_at = datetime.utcnow()
+         creator.pipeline_stage = "prospect"
+         await db.commit()
+diff --git a/app/services/clickup_service.py b/app/services/clickup_service.py
+index 626de7d..da58f57 100644
+--- a/app/services/clickup_service.py
++++ b/app/services/clickup_service.py
+@@ -418,12 +418,13 @@ class ClickUpService:
+         payload = {
+             "name": task_name,
+             "description": "\n".join(desc_parts),
++            "status": "discovery",
+             "custom_fields": custom_fields,
+         }
+ 
+         try:
+             response = await self.client.post(
+-                f"{self.base_url}/list/{CREATOR_POOL_LIST_ID}/task",
++                f"{self.base_url}/list/{CREATOR_PIPELINE_LIST_ID}/task",
+                 json=payload,
+             )
+ 
+@@ -431,7 +432,7 @@ class ClickUpService:
+                 task_data = response.json()
+                 task_id = task_data.get("id")
+                 task_url = task_data.get("url", f"https://app.clickup.com/t/{task_id}")
+-                logger.info(f"[ClickUp] Pushed discovery result '{name}' to Creator Pool: {task_id}")
++                logger.info(f"[ClickUp] Pushed discovery result '{name}' to Creator Pipeline: {task_id}")
+                 return {"task_id": task_id, "task_url": task_url}
+             else:
+                 logger.error(f"[ClickUp] Push failed: {response.status_code} {response.text}")
