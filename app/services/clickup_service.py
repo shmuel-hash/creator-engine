@@ -330,3 +330,180 @@ class ClickUpService:
                 results["errors"].append(creator.name)
 
         return results
+
+    async def push_discovery_result(self, result_data: dict) -> Optional[dict]:
+        """
+        Push a discovery result directly to ClickUp Creator Pool.
+        Does NOT require a saved Creator record — works with raw discovery data.
+        Returns {"task_id": ..., "task_url": ...} or None on failure.
+        """
+        ai = result_data.get("ai_analysis") or {}
+        name = result_data.get("name", "Unknown")
+        handle = result_data.get("handle", "")
+        platform = result_data.get("platform", "unknown")
+        profile_url = result_data.get("profile_url", "")
+        followers = result_data.get("followers")
+        score = result_data.get("relevance_score")
+        email = result_data.get("email")
+        bio = result_data.get("bio")
+        categories = result_data.get("categories") or []
+
+        # Build rich markdown description
+        desc_parts = []
+        if handle:
+            desc_parts.append(f"**Handle:** @{handle.lstrip('@')}")
+        if platform and platform != "unknown":
+            desc_parts.append(f"**Platform:** {platform.title()}")
+        if profile_url:
+            desc_parts.append(f"**Profile:** {profile_url}")
+        if followers:
+            desc_parts.append(f"**Followers:** {followers:,}")
+        if score is not None:
+            desc_parts.append(f"**AI Relevance Score:** {score}/100")
+        if bio:
+            desc_parts.append(f"**Bio:** {bio}")
+
+        # AI analysis fields
+        if ai.get("content_fit"):
+            desc_parts.append(f"**Content Fit:** {ai['content_fit']}")
+        if ai.get("credential_tier"):
+            desc_parts.append(f"**Credential Tier:** {ai['credential_tier']}")
+        if ai.get("medical_specialty"):
+            desc_parts.append(f"**Specialty:** {ai['medical_specialty']}")
+        if ai.get("credentials"):
+            desc_parts.append(f"**Credentials:** {', '.join(ai['credentials'])}")
+        if ai.get("content_niches"):
+            desc_parts.append(f"**Niches:** {', '.join(ai['content_niches'])}")
+        if ai.get("creator_type"):
+            desc_parts.append(f"**Creator Type:** {ai['creator_type']}")
+        if ai.get("estimated_rate"):
+            desc_parts.append(f"**Est. Rate:** {ai['estimated_rate']}")
+        if ai.get("country"):
+            desc_parts.append(f"**Country:** {ai['country']}")
+        if ai.get("red_flags"):
+            desc_parts.append(f"**Red Flags:** {', '.join(ai['red_flags'])}")
+        if ai.get("recommended_action"):
+            desc_parts.append(f"**Recommended Action:** {ai['recommended_action']}")
+        if ai.get("past_partnerships"):
+            desc_parts.append(f"**Past Partnerships:** {', '.join(ai['past_partnerships'])}")
+
+        # Other profiles
+        other = ai.get("other_profiles") or {}
+        for plat, h in other.items():
+            if h:
+                desc_parts.append(f"**{plat.title()}:** @{h.lstrip('@')}")
+
+        desc_parts.append(f"\n---\n*Added via Creator Discovery Engine*")
+
+        # Build custom fields
+        custom_fields = []
+        if email:
+            custom_fields.append({
+                "id": "e2b74079-1904-4eb7-bb37-4b1655484618",
+                "value": email,
+            })
+        if categories:
+            label_ids = self._map_categories_to_labels(categories)
+            if label_ids:
+                custom_fields.append({
+                    "id": "04fc1e49-f53f-4a48-b959-50dd7f92fd2a",
+                    "value": label_ids,
+                })
+
+        # Task name: "Creator Name (@handle)"
+        task_name = name
+        if handle:
+            task_name = f"{name} (@{handle.lstrip('@')})"
+
+        payload = {
+            "name": task_name,
+            "description": "\n".join(desc_parts),
+            "custom_fields": custom_fields,
+        }
+
+        try:
+            response = await self.client.post(
+                f"{self.base_url}/list/{CREATOR_POOL_LIST_ID}/task",
+                json=payload,
+            )
+
+            if response.status_code in (200, 201):
+                task_data = response.json()
+                task_id = task_data.get("id")
+                task_url = task_data.get("url", f"https://app.clickup.com/t/{task_id}")
+                logger.info(f"[ClickUp] Pushed discovery result '{name}' to Creator Pool: {task_id}")
+                return {"task_id": task_id, "task_url": task_url}
+            else:
+                logger.error(f"[ClickUp] Push failed: {response.status_code} {response.text}")
+                return None
+
+        except Exception as e:
+            logger.error(f"[ClickUp] Push error: {e}")
+            return None
+
+    async def fetch_pipeline_creators(self) -> list[dict]:
+        """
+        Fetch all tasks from Creator Pool, Pipeline, and Content lists.
+        Returns list of {name, handle, status, task_id, task_url} for dedup.
+        """
+        all_creators = []
+
+        for list_id, list_name in [
+            (CREATOR_POOL_LIST_ID, "Creator Pool"),
+            (CREATOR_PIPELINE_LIST_ID, "Creator Pipeline"),
+            (CREATOR_CONTENT_LIST_ID, "Creator Content"),
+        ]:
+            page = 0
+            while True:
+                try:
+                    response = await self.client.get(
+                        f"{self.base_url}/list/{list_id}/task",
+                        params={
+                            "page": page,
+                            "subtasks": "false",
+                            "include_closed": "true",
+                        },
+                    )
+
+                    if response.status_code != 200:
+                        logger.warning(f"[ClickUp] Failed to fetch {list_name}: {response.status_code}")
+                        break
+
+                    data = response.json()
+                    tasks = data.get("tasks", [])
+                    if not tasks:
+                        break
+
+                    for task in tasks:
+                        task_name = task.get("name", "")
+                        # Extract handle from task name like "Dr. Smith (@drsmith)"
+                        handle = None
+                        if "(@" in task_name and task_name.endswith(")"):
+                            handle = task_name.split("(@")[-1].rstrip(")").lower()
+                        # Also strip the handle part to get clean name
+                        clean_name = task_name.split(" (@")[0] if " (@" in task_name else task_name
+
+                        status = task.get("status", {}).get("status", "unknown")
+                        task_id = task.get("id")
+                        task_url = task.get("url", f"https://app.clickup.com/t/{task_id}")
+
+                        all_creators.append({
+                            "name": clean_name,
+                            "handle": handle,
+                            "status": status,
+                            "task_id": task_id,
+                            "task_url": task_url,
+                            "list": list_name,
+                        })
+
+                    # ClickUp returns max 100 per page
+                    if len(tasks) < 100:
+                        break
+                    page += 1
+
+                except Exception as e:
+                    logger.error(f"[ClickUp] Error fetching {list_name}: {e}")
+                    break
+
+        logger.info(f"[ClickUp] Fetched {len(all_creators)} creators from pipeline")
+        return all_creators

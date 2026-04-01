@@ -6,7 +6,7 @@ import Avatar from './Avatar';
 import PlatformPill from './PlatformPill';
 import ScoreRing from './ScoreRing';
 
-export default function ListItem({ creator, isDuplicate, onSelect, isDiscoveryResult, onSaveAndEnrich }) {
+export default function ListItem({ creator, isDuplicate, onSelect, isDiscoveryResult, pipelineStatus }) {
   const c = creator;
   const ai = c.ai_analysis || {};
   const creds = ai.credentials || [];
@@ -19,6 +19,16 @@ export default function ListItem({ creator, isDuplicate, onSelect, isDiscoveryRe
 
   const listAi = c.ai_analysis || {};
 
+  const getPipelineLabel = () => {
+    if (!pipelineStatus) return null;
+    const s = (pipelineStatus.status || '').toLowerCase();
+    if (s === 'open' || s === 'to do') return 'In Pipeline';
+    if (s === 'in progress') return 'Outreach Sent';
+    if (s === 'review') return 'In Review';
+    if (s === 'complete' || s === 'closed') return 'Contracted';
+    return pipelineStatus.status || 'In Pipeline';
+  };
+
   return (
     <div className="card-warm" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', cursor: 'pointer', opacity: isDuplicate ? 0.5 : 1 }} onClick={() => onSelect && onSelect(c)}>
       <Avatar name={c.name} size={40} src={listAi.avatar_url || listAi.apify_profile?.avatar_url} />
@@ -26,6 +36,7 @@ export default function ListItem({ creator, isDuplicate, onSelect, isDiscoveryRe
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
           <span style={{ fontWeight: 600, fontSize: 14 }}>{c.name}</span>
           {isDuplicate && <Pill color="var(--amber)" bg="var(--amber-light)" style={{ fontSize: 9 }}>In DB</Pill>}
+          {pipelineStatus && !isDuplicate && <Pill color="white" bg="var(--sage)" style={{ fontSize: 9 }}>{I.check()} {getPipelineLabel()}</Pill>}
           {creds.slice(0, 1).map((cr, i) => <Pill key={i} color="var(--blue)" bg="var(--blue-light)" style={{ fontSize: 9 }}>{cr}</Pill>)}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--text-muted)' }}>

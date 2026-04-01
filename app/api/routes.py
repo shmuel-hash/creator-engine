@@ -26,7 +26,7 @@ from app.models.schemas import (
 )
 from app.services.discovery_engine import (
     DiscoveryEngine, parse_search_intent, analyze_results, deduplicate_results,
-    generate_deep_search_queries, classify_credential_tier,
+    generate_deep_search_queries, classify_credential_tier, detect_platform,
 )
 from app.services.import_service import import_spreadsheet
 from app.services.clickup_service import ClickUpService
@@ -373,7 +373,7 @@ async def discover_creators(
                             search_id=search_id,
                             name=rd.get("name", "Unknown"),
                             handle=rd.get("handle"),
-                            platform=rd.get("platform", "unknown"),
+                            platform=detect_platform(rd),
                             profile_url=rd.get("profile_url"),
                             bio=rd.get("bio"),
                             email=rd.get("email"),
@@ -499,6 +499,66 @@ async def save_discovery_result(result_id: UUID, db: AsyncSession = Depends(get_
     engine = DiscoveryEngine()
     creator = await engine.save_result_as_creator(result_id, db)
     return CreatorResponse.model_validate(creator)
+
+
+@router.post("/discover/results/{result_id}/add-to-pipeline")
+async def add_to_pipeline(result_id: UUID, db: AsyncSession = Depends(get_db)):
+    """
+    Add a discovery result directly to ClickUp Creator Pool.
+    Saves as creator in DB and pushes to ClickUp in one step.
+    """
+    # Get the discovery result
+    result = await db.get(DiscoveryResult, result_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Discovery result not found")
+    if result.creator_id:
+        raise HTTPException(status_code=400, detail="Already saved to pipeline")
+
+    # Save as creator first
+    engine = DiscoveryEngine()
+    creator = await engine.save_result_as_creator(result_id, db)
+
+    # Push to ClickUp
+    service = ClickUpService()
+    result_data = {
+        "name": creator.name,
+        "handle": result.handle,
+        "platform": result.platform,
+        "profile_url": result.profile_url,
+        "followers": result.followers,
+        "relevance_score": result.relevance_score,
+        "email": creator.email or result.email,
+        "bio": result.bio,
+        "categories": result.categories or [],
+        "ai_analysis": result.ai_analysis or {},
+    }
+    clickup_result = await service.push_discovery_result(result_data)
+
+    if clickup_result:
+        # Store ClickUp reference on creator
+        creator.clickup_task_id = clickup_result["task_id"]
+        creator.clickup_list = "Creator Pool"
+        creator.clickup_synced_at = datetime.utcnow()
+        creator.pipeline_stage = "prospect"
+        await db.commit()
+
+    return {
+        "success": True,
+        "creator_id": str(creator.id),
+        "creator_name": creator.name,
+        "clickup": clickup_result,
+    }
+
+
+@router.get("/clickup/pipeline-creators")
+async def get_pipeline_creators():
+    """
+    Fetch all creators from ClickUp pipeline lists for dedup/status display.
+    Returns names and handles for matching against discovery results.
+    """
+    service = ClickUpService()
+    creators = await service.fetch_pipeline_creators()
+    return {"creators": creators, "count": len(creators)}
 
 
 @router.post("/discover/results/{result_id}/save-and-enrich")
@@ -663,7 +723,7 @@ async def go_deeper(search_id: UUID, db: AsyncSession = Depends(get_db)):
                             search_id=deep_search_id,
                             name=rd.get("name", "Unknown"),
                             handle=rd.get("handle"),
-                            platform=rd.get("platform", "unknown"),
+                            platform=detect_platform(rd),
                             profile_url=rd.get("profile_url"),
                             bio=rd.get("bio"),
                             email=rd.get("email"),

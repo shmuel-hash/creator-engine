@@ -44,6 +44,29 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+def detect_platform(result_data: dict) -> str:
+    """Detect platform from result data, falling back to URL-based detection."""
+    platform = result_data.get("platform")
+    if platform:
+        return platform
+    profile_url = (result_data.get("profile_url") or "").lower()
+    if "linkedin.com" in profile_url:
+        return "linkedin"
+    if "tiktok.com" in profile_url:
+        return "tiktok"
+    if "instagram.com" in profile_url:
+        return "instagram"
+    if "youtube.com" in profile_url or "youtu.be" in profile_url:
+        return "youtube"
+    if "twitter.com" in profile_url or "x.com" in profile_url:
+        return "twitter"
+    if "reddit.com" in profile_url:
+        return "reddit"
+    if "facebook.com" in profile_url:
+        return "facebook"
+    return "unknown"
+
+
 def extract_json(text: str):
     """
     Robustly extract a JSON object or array from Claude's response.
@@ -1203,7 +1226,7 @@ class DiscoveryEngine:
                     search_id=search.id,
                     name=result_data.get("name", "Unknown"),
                     handle=result_data.get("handle"),
-                    platform=result_data.get("platform", "unknown"),
+                    platform=detect_platform(result_data),
                     profile_url=result_data.get("profile_url"),
                     bio=result_data.get("bio"),
                     email=result_data.get("email"),

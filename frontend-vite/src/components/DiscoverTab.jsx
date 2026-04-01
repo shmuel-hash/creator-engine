@@ -57,7 +57,6 @@ export default function DiscoverTab() {
   const [viewMode, setViewMode] = useState('grid');
   const [typeFilter, setTypeFilter] = useState('');
   const [nicheFilter, setNicheFilter] = useState('');
-  const [batchEnriching, setBatchEnriching] = useState(false);
   const [savedThisSession, setSavedThisSession] = useState(new Set());
   const [searchMode, setSearchMode] = useState('general');
   const [credentialFilter, setCredentialFilter] = useState('');
@@ -66,11 +65,11 @@ export default function DiscoverTab() {
   const [recentSearches, setRecentSearches] = useState([]);
   const [searchStartTime, setSearchStartTime] = useState(null);
   const [elapsed, setElapsed] = useState(0);
+  const [pipelineCreators, setPipelineCreators] = useState([]);
 
   const doctorMode = searchMode === 'doctor';
   const brandIntelMode = searchMode === 'brand_intel';
   const pollRef = useRef(null);
-  const batchPollRef = useRef(null);
   const deepPollRef = useRef(null);
   const timerRef = useRef(null);
 
@@ -87,7 +86,10 @@ export default function DiscoverTab() {
     }
   }, [searching, deepSearching, searchStartTime]);
 
-  useEffect(() => { api('/creators', { params: { per_page: 500 } }).then(d => setExisting(d.creators || [])).catch(() => {}); }, []);
+  useEffect(() => {
+    api('/creators', { params: { per_page: 500 } }).then(d => setExisting(d.creators || [])).catch(() => {});
+    api('/clickup/pipeline-creators').then(d => setPipelineCreators(d.creators || [])).catch(() => {});
+  }, []);
 
   // On mount: load recent searches + restore last search or resume running search
   const mountedRef = useRef(false);
@@ -177,7 +179,7 @@ export default function DiscoverTab() {
     } catch (e) { setError(e.message); setSearching(false); }
   };
 
-  useEffect(() => () => { clearInterval(pollRef.current); clearInterval(batchPollRef.current); clearInterval(deepPollRef.current); }, []);
+  useEffect(() => () => { clearInterval(pollRef.current); clearInterval(deepPollRef.current); }, []);
 
   const handleGoDeeper = async () => {
     if (!results?.search_id) return;
@@ -195,37 +197,32 @@ export default function DiscoverTab() {
     } catch (e) { setError(e.message); setDeepSearching(false); }
   };
 
-  const handleSAE = async (result) => {
-    const saved = await api(`/discover/results/${result.id}/save-and-enrich`, { method: 'POST' });
+  const handleAddToPipeline = (result, resp) => {
     setSavedThisSession(prev => new Set([...prev, result.id]));
-    setResults(p => p ? { ...p, results: p.results.map(r => r.id === result.id ? { ...r, _saved: true, _enrichingCreatorId: saved.creator.id } : r) } : p);
-    if (saved.creator) setExisting(p => [...p, saved.creator]);
-    return saved;
+    setResults(p => p ? { ...p, results: p.results.map(r => r.id === result.id ? { ...r, _saved: true, _inPipeline: true } : r) } : p);
+    // Add to pipeline creators for future dedup
+    if (resp?.clickup) {
+      setPipelineCreators(prev => [...prev, {
+        name: result.name,
+        handle: (result.handle || '').toLowerCase().replace('@', ''),
+        status: 'open',
+        task_id: resp.clickup.task_id,
+        task_url: resp.clickup.task_url,
+        list: 'Creator Pool',
+      }]);
+    }
   };
 
-  const handleSaveAll = async () => {
-    if (!results?.search_id) return;
-    setBatchEnriching(true);
-    try {
-      const resp = await api(`/discover/${results.search_id}/save-and-enrich-all`, { method: 'POST' });
-      if (resp.creators?.length) {
-        const drIds = resp.creators.map(c => c.discovery_result_id);
-        setSavedThisSession(prev => new Set([...prev, ...drIds]));
-        setResults(p => p ? { ...p, results: p.results.map(r => { const match = resp.creators.find(c => c.discovery_result_id === r.id); return match ? { ...r, _saved: true, _enrichingCreatorId: match.id } : r; }) } : p);
-        batchPollRef.current = setInterval(async () => {
-          let pending = 0;
-          for (const cr of resp.creators) {
-            try {
-              const s = await api(`/creators/${cr.id}/enrich/status`);
-              if (s.status === 'complete') {
-                try { const full = await api(`/creators/${cr.id}`); setResults(p => p ? { ...p, results: p.results.map(r => r.id === cr.discovery_result_id ? { ...r, ...full, _saved: true, _enriched: true, id: r.id } : r) } : p); } catch (e) { /* ignore */ }
-              } else if (s.status !== 'failed') pending++;
-            } catch (e) { /* ignore */ }
-          }
-          if (pending === 0) { clearInterval(batchPollRef.current); setBatchEnriching(false); }
-        }, 4000);
-      } else { setBatchEnriching(false); }
-    } catch (e) { console.error(e); setBatchEnriching(false); }
+  // Match a discovery result to a ClickUp pipeline creator
+  const getPipelineStatus = (r) => {
+    if (!pipelineCreators.length) return null;
+    const handle = (r.handle || '').toLowerCase().replace('@', '');
+    const name = (r.name || '').toLowerCase().trim();
+    return pipelineCreators.find(pc => {
+      if (handle && pc.handle && handle === pc.handle) return true;
+      if (name && pc.name && name === pc.name.toLowerCase().trim()) return true;
+      return false;
+    }) || null;
   };
 
   const sorted = useMemo(() => {
@@ -388,8 +385,6 @@ export default function DiscoverTab() {
                   </select>
                 )}
                 {(typeFilter || nicheFilter || credentialFilter) && <button onClick={() => { setTypeFilter(''); setNicheFilter(''); setCredentialFilter(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--terracotta)', fontSize: 12, fontWeight: 500 }}>Clear</button>}
-                {newC > 0 && !batchEnriching && <button className="btn-terracotta" onClick={handleSaveAll} style={{ fontSize: 12, padding: '6px 14px' }}>{I.zap()} Save All & Get Contacts ({newC})</button>}
-                {batchEnriching && <span style={{ fontSize: 12, color: 'var(--terracotta)', display: 'flex', alignItems: 'center', gap: 6 }}>{I.loader()} Finding contacts...</span>}
                 {doctorMode && results && !deepSearching && !hasDeepResults && (
                   <button onClick={handleGoDeeper} style={{
                     display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px', fontSize: 12, fontWeight: 600,
@@ -412,11 +407,11 @@ export default function DiscoverTab() {
 
             {viewMode === 'grid' ? (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 16 }}>
-                {sorted.map((r, i) => <CreatorCard key={r.id || i} creator={{ ...r, categories: r.categories || [] }} isDiscoveryResult={!r._saved} isDuplicate={r._isDup} onSaveAndEnrich={handleSAE} onSelect={setSelected} delay={i} />)}
+                {sorted.map((r, i) => <CreatorCard key={r.id || i} creator={{ ...r, categories: r.categories || [] }} isDiscoveryResult={!r._saved} isDuplicate={r._isDup} pipelineStatus={r._inPipeline ? { status: 'open' } : getPipelineStatus(r)} onAddToPipeline={handleAddToPipeline} onSelect={setSelected} delay={i} />)}
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {sorted.map((r, i) => <ListItem key={r.id || i} creator={r} isDuplicate={r._isDup} onSelect={setSelected} isDiscoveryResult={!r._saved} onSaveAndEnrich={handleSAE} />)}
+                {sorted.map((r, i) => <ListItem key={r.id || i} creator={r} isDuplicate={r._isDup} onSelect={setSelected} isDiscoveryResult={!r._saved} pipelineStatus={r._inPipeline ? { status: 'open' } : getPipelineStatus(r)} />)}
               </div>
             )}
           </div>

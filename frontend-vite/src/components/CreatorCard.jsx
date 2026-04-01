@@ -4,12 +4,12 @@ import { I } from './Icons';
 import Pill from './Pill';
 import Avatar from './Avatar';
 import ScoreRing from './ScoreRing';
-import EnrichmentProgress from './EnrichmentProgress';
 
-export default function CreatorCard({ creator, isDiscoveryResult, isDuplicate, onSaveAndEnrich, onEnrich, onSelect, delay = 0 }) {
-  const [enrichCId, setEnrichCId] = useState(null);
-  const [enrichDone, setEnrichDone] = useState(false);
+export default function CreatorCard({ creator, isDiscoveryResult, isDuplicate, pipelineStatus, onAddToPipeline, onSelect, delay = 0 }) {
   const [local, setLocal] = useState(creator);
+  const [pushing, setPushing] = useState(false);
+  const [pushed, setPushed] = useState(!!pipelineStatus);
+  const [pushResult, setPushResult] = useState(pipelineStatus ? { task_url: pipelineStatus.task_url } : null);
   const [err, setErr] = useState(null);
   const c = local;
   const ai = c.ai_analysis || {};
@@ -36,28 +36,34 @@ export default function CreatorCard({ creator, isDiscoveryResult, isDuplicate, o
 
   const avatarSrc = ai.avatar_url || ai.apify_profile?.avatar_url || null;
 
-  const [saving, setSaving] = useState(false);
-  const doEnrich = async (ev) => {
-    ev.stopPropagation(); setErr(null); setSaving(true);
+  const handleAddToPipeline = async (ev) => {
+    ev.stopPropagation();
+    setErr(null);
+    setPushing(true);
     try {
-      if (isDiscoveryResult && onSaveAndEnrich) {
-        const saved = await onSaveAndEnrich(c);
-        setLocal(p => ({ ...p, ...saved.creator, _saved: true }));
-        setEnrichCId(saved.creator.id);
-      } else if (onEnrich) {
-        await onEnrich(c.id);
-        setEnrichCId(c.id);
-      }
+      const resp = await api(`/discover/results/${c.id}/add-to-pipeline`, { method: 'POST' });
+      setPushed(true);
+      setPushResult(resp.clickup);
+      setLocal(prev => ({ ...prev, _saved: true }));
+      if (onAddToPipeline) onAddToPipeline(c, resp);
     } catch (error) {
       setErr(error.message);
-      console.error('[FindContact]', c.name, error.message);
+      console.error('[AddToPipeline]', c.name, error.message);
     }
-    setSaving(false);
+    setPushing(false);
   };
 
-  const onEnrichDone = async (id) => {
-    try { const u = await api(`/creators/${id}`); setLocal(u); setEnrichDone(true); } catch (e) { /* ignore */ }
-    setEnrichCId(null);
+  // Determine pipeline status label
+  const getPipelineLabel = () => {
+    if (pipelineStatus?.status) {
+      const s = pipelineStatus.status.toLowerCase();
+      if (s === 'open' || s === 'to do') return 'In Pipeline';
+      if (s === 'in progress') return 'Outreach Sent';
+      if (s === 'review') return 'In Review';
+      if (s === 'complete' || s === 'closed') return 'Contracted';
+      return pipelineStatus.status;
+    }
+    return 'In Pipeline';
   };
 
   return (
@@ -66,6 +72,7 @@ export default function CreatorCard({ creator, isDiscoveryResult, isDuplicate, o
       <div style={{ height: 56, background: isDuplicate ? 'var(--bg-muted)' : 'linear-gradient(135deg, var(--terracotta-light) 0%, var(--peach) 60%, var(--sage-light) 100%)', position: 'relative' }}>
         {c.relevance_score != null && <div style={{ position: 'absolute', top: 8, right: 8 }}><ScoreRing score={c.relevance_score} size={36} /></div>}
         {isDuplicate && <div style={{ position: 'absolute', top: 8, left: 8 }}><Pill color="var(--amber)" bg="var(--amber-light)">{I.database()} In DB</Pill></div>}
+        {(pushed || pipelineStatus) && !isDuplicate && <div style={{ position: 'absolute', top: 8, left: 8 }}><Pill color="white" bg="var(--sage)">{I.check()} {getPipelineLabel()}</Pill></div>}
       </div>
 
       <div style={{ padding: '0 16px 16px', cursor: 'pointer' }}>
@@ -125,28 +132,35 @@ export default function CreatorCard({ creator, isDiscoveryResult, isDuplicate, o
           )}
         </div>
 
-        {/* Enrich button or enriched state */}
-        {!enrichCId && !enrichDone && !isDuplicate && !c._enriched && !c._enrichingCreatorId && (
+        {/* Add to Pipeline button */}
+        {isDiscoveryResult && !pushed && !pipelineStatus && !isDuplicate && (
           <div style={{ marginTop: 10 }}>
-            <button className="btn-terracotta" onClick={doEnrich} disabled={saving} style={{ width: '100%', justifyContent: 'center', fontSize: 12, padding: '7px 12px' }}>
-              {saving ? I.loader() : I.zap()} {saving ? 'Saving...' : isDiscoveryResult && !c._saved ? 'Save & Find Contact' : 'Find Contact'}
+            <button className="btn-terracotta" onClick={handleAddToPipeline} disabled={pushing} style={{ width: '100%', justifyContent: 'center', fontSize: 12, padding: '7px 12px' }}>
+              {pushing ? I.loader() : I.zap()} {pushing ? 'Adding...' : 'Add to Pipeline'}
             </button>
             {err && <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 4, padding: '4px 8px', background: 'var(--red-light)', borderRadius: 4 }}>{err}</div>}
           </div>
         )}
-        {(c._enrichingCreatorId && !c._enriched && !enrichDone) && (
-          <div style={{ marginTop: 8 }}><EnrichmentProgress creatorId={c._enrichingCreatorId} onComplete={onEnrichDone} /></div>
-        )}
-        {(enrichDone || c._enriched) && (
-          <div style={{ marginTop: 10, padding: '10px 12px', background: 'var(--sage-light)', borderRadius: 'var(--radius-xs)', border: '1px solid var(--sage)' }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--sage)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>{I.check()} Enriched</div>
-            {(c.email || local.email) && <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', marginBottom: 4 }}>{I.mail()} {c.email || local.email}</div>}
-            {(c.total_followers || local.total_followers) && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>{fmtNum(c.total_followers || local.total_followers)} followers</div>}
-            {(c.bio || local.bio) && <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5, maxHeight: 40, overflow: 'hidden' }}>{c.bio || local.bio}</div>}
-            <button onClick={(e) => { e.stopPropagation(); onSelect && onSelect({ ...c, ...local }); }} style={{ marginTop: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--terracotta)', fontWeight: 600, padding: 0 }}>View full profile →</button>
+
+        {/* Pipeline success state */}
+        {(pushed || pipelineStatus) && !isDuplicate && (
+          <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--sage-light)', borderRadius: 'var(--radius-xs)', border: '1px solid var(--sage)' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--sage)', display: 'flex', alignItems: 'center', gap: 4 }}>
+              {I.check()} {getPipelineLabel()}
+            </div>
+            {(pushResult?.task_url || pipelineStatus?.task_url) && (
+              <a
+                href={pushResult?.task_url || pipelineStatus?.task_url}
+                target="_blank"
+                rel="noopener"
+                onClick={e => e.stopPropagation()}
+                style={{ fontSize: 10, color: 'var(--terracotta)', marginTop: 4, display: 'inline-block', textDecoration: 'none' }}
+              >
+                Open in ClickUp →
+              </a>
+            )}
           </div>
         )}
-        {enrichCId && !c._enrichingCreatorId && <div style={{ marginTop: 8 }}><EnrichmentProgress creatorId={enrichCId} onComplete={onEnrichDone} /></div>}
       </div>
     </div>
   );
