@@ -337,6 +337,18 @@ async def discover_creators(
     platforms_list = list(request.platforms)
     max_results_val = int(request.max_results)
     search_mode_val = str(request.search_mode)
+    follower_min_val = request.follower_min
+    follower_max_val = request.follower_max
+
+    # Append follower range to query context so AI respects it
+    ai_query_text = query_text
+    if follower_min_val or follower_max_val:
+        range_parts = []
+        if follower_min_val:
+            range_parts.append(f"minimum {follower_min_val:,} followers")
+        if follower_max_val:
+            range_parts.append(f"maximum {follower_max_val:,} followers")
+        ai_query_text = f"{query_text} (IMPORTANT: only find creators with {' and '.join(range_parts)})"
 
     # Run discovery in background
     async def _run_discovery():
@@ -354,8 +366,15 @@ async def discover_creators(
                     await session.commit()
 
                     # Step 1: Parse intent (with search mode)
-                    logger.info(f"[Discovery] Parsing intent ({search_mode_val}): {query_text}")
-                    intent = await parse_search_intent(query_text, platforms_list, search_mode=search_mode_val)
+                    logger.info(f"[Discovery] Parsing intent ({search_mode_val}): {ai_query_text}")
+                    intent = await parse_search_intent(ai_query_text, platforms_list, search_mode=search_mode_val)
+                    # Store follower range in intent for the analyzer
+                    if follower_min_val:
+                        intent["follower_range"] = intent.get("follower_range") or {}
+                        intent["follower_range"]["min"] = follower_min_val
+                    if follower_max_val:
+                        intent["follower_range"] = intent.get("follower_range") or {}
+                        intent["follower_range"]["max"] = follower_max_val
                     s.parsed_intent = intent
                     s.status = "searching"
                     await session.commit()
@@ -421,6 +440,14 @@ async def discover_creators(
                         blocked = before_count - len(unique)
                         if blocked > 0:
                             logger.info(f"[Discovery] Filtered {blocked} blacklisted creators")
+
+                    # Step 4c: Filter by follower range (hard filter)
+                    if follower_max_val:
+                        before_count = len(unique)
+                        unique = [r for r in unique if not r.get("estimated_followers") or r["estimated_followers"] <= follower_max_val]
+                        filtered = before_count - len(unique)
+                        if filtered > 0:
+                            logger.info(f"[Discovery] Filtered {filtered} creators above {follower_max_val} followers")
 
                     final = unique[:max_results_val]
 

@@ -67,7 +67,9 @@ export default function DiscoverTab() {
   const [elapsed, setElapsed] = useState(0);
   const [pipelineCreators, setPipelineCreators] = useState([]);
   const [blacklist, setBlacklist] = useState([]);
-  const [blockedCount, setBlockedCount] = useState(0);
+  const [followerMin, setFollowerMin] = useState(null);
+  const [followerMax, setFollowerMax] = useState(100000);
+  const [showFollowerFilter, setShowFollowerFilter] = useState(false);
 
   const doctorMode = searchMode === 'doctor';
   const brandIntelMode = searchMode === 'brand_intel';
@@ -164,6 +166,8 @@ export default function DiscoverTab() {
     if (!q.trim()) return;
     setSearching(true); setError(null); setResults(null); setSearchStatus(null); setCredentialFilter(''); setSearchStartTime(Date.now()); clearInterval(pollRef.current);
     const body = { query: q, platforms: ['tiktok', 'instagram', 'youtube'], max_results: resultCount, search_mode: searchMode };
+    if (followerMin) body.follower_min = followerMin;
+    if (followerMax) body.follower_max = followerMax;
     if (searchMode === 'brand_intel') {
       const handles = (brandOverride || brandHandles).split(',').map(h => h.trim()).filter(Boolean);
       if (handles.length > 0) body.brand_handles = handles;
@@ -260,8 +264,6 @@ export default function DiscoverTab() {
   const sorted = useMemo(() => {
     if (!results?.results) return [];
     let t = results.results.map(r => ({ ...r, _isDup: checkDup(r), _isBlocked: isBlacklisted(r) }));
-    const blocked = t.filter(r => r._isBlocked).length;
-    setBlockedCount(blocked);
     t = t.filter(r => !r._isDup && !r._isBlocked);
     if (typeFilter) t = t.filter(r => (r.ai_analysis?.creator_type || '') === typeFilter || (r.categories || []).some(c => c.toLowerCase().includes(typeFilter.toLowerCase())));
     if (nicheFilter) t = t.filter(r => (r.ai_analysis?.content_niches || []).includes(nicheFilter) || (r.categories || []).some(c => c.toLowerCase().includes(nicheFilter.toLowerCase())));
@@ -271,6 +273,7 @@ export default function DiscoverTab() {
 
   const newC = sorted.length;
   const dupC = results?.results ? results.results.filter(r => checkDup(r)).length : 0;
+  const blockedC = results?.results ? results.results.filter(r => isBlacklisted(r)).length : 0;
   const hasDeepResults = results?.results?.some(r => r.ai_analysis?.source_layer === 'deep' || r.source_type === 'deep_search');
 
   return (
@@ -331,6 +334,46 @@ export default function DiscoverTab() {
                 <button onClick={() => doSearch(query)} disabled={searching || !query.trim()} className="btn-terracotta" style={{ borderRadius: 'var(--radius-sm)' }}>
                   {searching ? I.loader() : I.sparkles()} {searching ? 'Searching...' : 'Discover'}
                 </button>
+              </div>
+
+              {/* Follower range selector */}
+              <div style={{ marginTop: 10, maxWidth: 500 }}>
+                <button onClick={() => setShowFollowerFilter(!showFollowerFilter)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, padding: 0, fontFamily: 'var(--font-body)' }}>
+                  {I.trendUp ? I.trendUp() : '↕'} Follower range: {followerMin ? `${(followerMin/1000).toFixed(0)}K` : '0'} – {followerMax ? `${followerMax >= 1000000 ? (followerMax/1000000).toFixed(1)+'M' : (followerMax/1000).toFixed(0)+'K'}` : 'Any'} {showFollowerFilter ? '▴' : '▾'}
+                </button>
+                {showFollowerFilter && (
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8, padding: '10px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-xs)' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>Min followers</div>
+                      <select value={followerMin || 0} onChange={e => setFollowerMin(Number(e.target.value) || null)} style={{ width: '100%', padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 'var(--radius-xs)', fontSize: 12, background: 'var(--bg-card)', color: 'var(--text)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                        <option value={0}>No min</option>
+                        <option value={1000}>1K</option>
+                        <option value={5000}>5K</option>
+                        <option value={10000}>10K</option>
+                        <option value={25000}>25K</option>
+                        <option value={50000}>50K</option>
+                        <option value={100000}>100K</option>
+                      </select>
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', paddingTop: 14 }}>to</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>Max followers</div>
+                      <select value={followerMax || 0} onChange={e => setFollowerMax(Number(e.target.value) || null)} style={{ width: '100%', padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 'var(--radius-xs)', fontSize: 12, background: 'var(--bg-card)', color: 'var(--text)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                        <option value={25000}>25K</option>
+                        <option value={50000}>50K</option>
+                        <option value={100000}>100K</option>
+                        <option value={200000}>200K</option>
+                        <option value={500000}>500K</option>
+                        <option value={0}>No max</option>
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, paddingTop: 14 }}>
+                      {[{l:'Nano',min:1000,max:25000},{l:'Micro',min:5000,max:100000},{l:'Mid',min:50000,max:500000}].map(p => (
+                        <button key={p.l} onClick={() => { setFollowerMin(p.min); setFollowerMax(p.max); }} className="btn-ghost" style={{ fontSize: 10, padding: '4px 8px', borderRadius: 12 }}>{p.l}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -432,6 +475,16 @@ export default function DiscoverTab() {
                 )}
                 {deepSearching && <span style={{ fontSize: 12, color: 'var(--terracotta)', display: 'flex', alignItems: 'center', gap: 6 }}>{I.loader()} Digging deeper...</span>}
                 {hasDeepResults && <Pill color="var(--terracotta)" bg="var(--terracotta-light)">Includes hidden finds</Pill>}
+                {results && !searching && !deepSearching && (
+                  <button onClick={() => { setResultCount(prev => Math.min(prev + 20, 100)); doSearch(query); }} style={{
+                    display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px', fontSize: 12, fontWeight: 600,
+                    borderRadius: 'var(--radius-xs)', cursor: 'pointer',
+                    border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)',
+                    transition: 'all 0.2s ease',
+                  }} onMouseOver={e => { e.target.style.borderColor = 'var(--terracotta)'; e.target.style.color = 'var(--terracotta)'; }} onMouseOut={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.color = 'var(--text-secondary)'; }}>
+                    {I.sparkles()} Find More
+                  </button>
+                )}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--bg-muted)', borderRadius: 'var(--radius-xs)', padding: 3 }}>
                 <button onClick={() => setViewMode('grid')} style={{ padding: 6, borderRadius: 4, border: 'none', cursor: 'pointer', background: viewMode === 'grid' ? 'var(--bg-card)' : 'transparent', color: viewMode === 'grid' ? 'var(--text)' : 'var(--text-muted)', display: 'flex', boxShadow: viewMode === 'grid' ? 'var(--shadow-sm)' : 'none' }}>{I.grid()}</button>
