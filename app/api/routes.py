@@ -449,6 +449,13 @@ async def discover_creators(
                         if filtered > 0:
                             logger.info(f"[Discovery] Filtered {filtered} creators above {follower_max_val} followers")
 
+                    # Step 4d: Filter out results with no social handle (Reddit usernames, directory listings, etc.)
+                    before_count = len(unique)
+                    unique = [r for r in unique if r.get("handle") or r.get("profile_url")]
+                    no_handle = before_count - len(unique)
+                    if no_handle > 0:
+                        logger.info(f"[Discovery] Filtered {no_handle} results with no social handle")
+
                     final = unique[:max_results_val]
 
                     # Step 5: Store results
