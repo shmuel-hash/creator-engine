@@ -1,0 +1,160 @@
+diff --git a/app/api/routes.py b/app/api/routes.py
+index 6f9fff0..62cbe51 100644
+--- a/app/api/routes.py
++++ b/app/api/routes.py
+@@ -504,7 +504,7 @@ async def save_discovery_result(result_id: UUID, db: AsyncSession = Depends(get_
+ @router.post("/discover/results/{result_id}/add-to-pipeline")
+ async def add_to_pipeline(result_id: UUID, db: AsyncSession = Depends(get_db)):
+     """
+-    Add a discovery result directly to ClickUp Creator Pool.
++    Add a discovery result directly to ClickUp Creator Pipeline (Discovery status).
+     Saves as creator in DB and pushes to ClickUp in one step.
+     """
+     # Get the discovery result
+@@ -537,7 +537,7 @@ async def add_to_pipeline(result_id: UUID, db: AsyncSession = Depends(get_db)):
+     if clickup_result:
+         # Store ClickUp reference on creator
+         creator.clickup_task_id = clickup_result["task_id"]
+-        creator.clickup_list = "Creator Pool"
++        creator.clickup_list = "Creator Pipeline"
+         creator.clickup_synced_at = datetime.utcnow()
+         creator.pipeline_stage = "prospect"
+         await db.commit()
+diff --git a/app/services/clickup_service.py b/app/services/clickup_service.py
+index 626de7d..da58f57 100644
+--- a/app/services/clickup_service.py
++++ b/app/services/clickup_service.py
+@@ -418,12 +418,13 @@ class ClickUpService:
+         payload = {
+             "name": task_name,
+             "description": "\n".join(desc_parts),
++            "status": "discovery",
+             "custom_fields": custom_fields,
+         }
+ 
+         try:
+             response = await self.client.post(
+-                f"{self.base_url}/list/{CREATOR_POOL_LIST_ID}/task",
++                f"{self.base_url}/list/{CREATOR_PIPELINE_LIST_ID}/task",
+                 json=payload,
+             )
+ 
+@@ -431,7 +432,7 @@ class ClickUpService:
+                 task_data = response.json()
+                 task_id = task_data.get("id")
+                 task_url = task_data.get("url", f"https://app.clickup.com/t/{task_id}")
+-                logger.info(f"[ClickUp] Pushed discovery result '{name}' to Creator Pool: {task_id}")
++                logger.info(f"[ClickUp] Pushed discovery result '{name}' to Creator Pipeline: {task_id}")
+                 return {"task_id": task_id, "task_url": task_url}
+             else:
+                 logger.error(f"[ClickUp] Push failed: {response.status_code} {response.text}")
+diff --git a/frontend-vite/src/components/CreatorCard.jsx b/frontend-vite/src/components/CreatorCard.jsx
+index 45e167b..7aeba7d 100644
+--- a/frontend-vite/src/components/CreatorCard.jsx
++++ b/frontend-vite/src/components/CreatorCard.jsx
+@@ -5,16 +5,20 @@ import Pill from './Pill';
+ import Avatar from './Avatar';
+ import ScoreRing from './ScoreRing';
+ 
+-export default function CreatorCard({ creator, isDiscoveryResult, isDuplicate, pipelineStatus, onAddToPipeline, onSelect, delay = 0 }) {
++export default function CreatorCard({ creator, isDiscoveryResult, isDuplicate, pipelineStatus, onAddToPipeline, onDismissPipeline, onSelect, delay = 0 }) {
+   const [local, setLocal] = useState(creator);
+   const [pushing, setPushing] = useState(false);
+-  const [pushed, setPushed] = useState(!!pipelineStatus);
+-  const [pushResult, setPushResult] = useState(pipelineStatus ? { task_url: pipelineStatus.task_url } : null);
++  const [pushed, setPushed] = useState(false);
++  const [dismissed, setDismissed] = useState(false);
++  const [pushResult, setPushResult] = useState(null);
+   const [err, setErr] = useState(null);
+   const c = local;
+   const ai = c.ai_analysis || {};
+   const creds = ai.credentials || [];
+ 
++  // Effective pipeline status — null if dismissed
++  const effectivePipeline = dismissed ? null : (pushed ? { status: 'discovery', task_url: pushResult?.task_url } : pipelineStatus);
++
+   // Build platform list
+   const platforms = [];
+   if (c.tiktok_handle || c.tiktok_url) platforms.push({ n: 'tiktok', h: c.tiktok_handle, f: c.tiktok_followers });
+@@ -43,6 +47,7 @@ export default function CreatorCard({ creator, isDiscoveryResult, isDuplicate, p
+     try {
+       const resp = await api(`/discover/results/${c.id}/add-to-pipeline`, { method: 'POST' });
+       setPushed(true);
++      setDismissed(false);
+       setPushResult(resp.clickup);
+       setLocal(prev => ({ ...prev, _saved: true }));
+       if (onAddToPipeline) onAddToPipeline(c, resp);
+@@ -53,15 +58,24 @@ export default function CreatorCard({ creator, isDiscoveryResult, isDuplicate, p
+     setPushing(false);
+   };
+ 
++  const handleDismiss = (ev) => {
++    ev.stopPropagation();
++    setDismissed(true);
++    setPushed(false);
++    setPushResult(null);
++    if (onDismissPipeline) onDismissPipeline(c);
++  };
++
+   // Determine pipeline status label
+   const getPipelineLabel = () => {
+-    if (pipelineStatus?.status) {
+-      const s = pipelineStatus.status.toLowerCase();
+-      if (s === 'open' || s === 'to do') return 'In Pipeline';
+-      if (s === 'in progress') return 'Outreach Sent';
+-      if (s === 'review') return 'In Review';
++    if (effectivePipeline?.status) {
++      const s = effectivePipeline.status.toLowerCase();
++      if (s === 'open' || s === 'to do' || s === 'discovery') return 'In Pipeline';
++      if (s === 'in progress' || s === 'outreached') return 'Outreach Sent';
++      if (s === 'review' || s === 'interested') return 'Interested';
+       if (s === 'complete' || s === 'closed') return 'Contracted';
+-      return pipelineStatus.status;
++      if (s === 'discard') return 'Discarded';
++      return effectivePipeline.status;
+     }
+     return 'In Pipeline';
+   };
+@@ -72,7 +86,7 @@ export default function CreatorCard({ creator, isDiscoveryResult, isDuplicate, p
+       <div style={{ height: 56, background: isDuplicate ? 'var(--bg-muted)' : 'linear-gradient(135deg, var(--terracotta-light) 0%, var(--peach) 60%, var(--sage-light) 100%)', position: 'relative' }}>
+         {c.relevance_score != null && <div style={{ position: 'absolute', top: 8, right: 8 }}><ScoreRing score={c.relevance_score} size={36} /></div>}
+         {isDuplicate && <div style={{ position: 'absolute', top: 8, left: 8 }}><Pill color="var(--amber)" bg="var(--amber-light)">{I.database()} In DB</Pill></div>}
+-        {(pushed || pipelineStatus) && !isDuplicate && <div style={{ position: 'absolute', top: 8, left: 8 }}><Pill color="white" bg="var(--sage)">{I.check()} {getPipelineLabel()}</Pill></div>}
++        {effectivePipeline && !isDuplicate && <div style={{ position: 'absolute', top: 8, left: 8 }}><Pill color="white" bg="var(--sage)">{I.check()} {getPipelineLabel()}</Pill></div>}
+       </div>
+ 
+       <div style={{ padding: '0 16px 16px', cursor: 'pointer' }}>
+@@ -133,7 +147,7 @@ export default function CreatorCard({ creator, isDiscoveryResult, isDuplicate, p
+         </div>
+ 
+         {/* Add to Pipeline button */}
+-        {isDiscoveryResult && !pushed && !pipelineStatus && !isDuplicate && (
++        {isDiscoveryResult && !effectivePipeline && !isDuplicate && (
+           <div style={{ marginTop: 10 }}>
+             <button className="btn-terracotta" onClick={handleAddToPipeline} disabled={pushing} style={{ width: '100%', justifyContent: 'center', fontSize: 12, padding: '7px 12px' }}>
+               {pushing ? I.loader() : I.zap()} {pushing ? 'Adding...' : 'Add to Pipeline'}
+@@ -143,14 +157,19 @@ export default function CreatorCard({ creator, isDiscoveryResult, isDuplicate, p
+         )}
+ 
+         {/* Pipeline success state */}
+-        {(pushed || pipelineStatus) && !isDuplicate && (
++        {effectivePipeline && !isDuplicate && (
+           <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--sage-light)', borderRadius: 'var(--radius-xs)', border: '1px solid var(--sage)' }}>
+-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--sage)', display: 'flex', alignItems: 'center', gap: 4 }}>
+-              {I.check()} {getPipelineLabel()}
++            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--sage)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
++              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>{I.check()} {getPipelineLabel()}</span>
++              <button
++                onClick={handleDismiss}
++                title="Remove pipeline badge (doesn't delete from ClickUp)"
++                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0 2px', fontSize: 14, lineHeight: 1 }}
++              >×</button>
+             </div>
+-            {(pushResult?.task_url || pipelineStatus?.task_url) && (
++            {effectivePipeline.task_url && (
+               <a
+-                href={pushResult?.task_url || pipelineStatus?.task_url}
++                href={effectivePipeline.task_url}
+                 target="_blank"
+                 rel="noopener"
+                 onClick={e => e.stopPropagation()}
