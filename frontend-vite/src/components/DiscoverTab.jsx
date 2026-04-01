@@ -539,3 +539,4 @@ export default function DiscoverTab() {
     </div>
   );
 }
+
