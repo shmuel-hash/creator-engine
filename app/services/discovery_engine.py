@@ -120,22 +120,26 @@ Your job is to find REAL DOCTORS AND MEDICAL PROFESSIONALS who also create conte
 
 This is DOCTOR DISCOVERY MODE. The coordinator is specifically looking for medical professionals (MDs, DOs, NPs, PAs, RDs, PharmDs, PhDs) who:
 1. Have real medical credentials
-2. Create content on social media (even small audiences)
+2. Create content on social media (even small audiences — under 100K is IDEAL)
 3. Would be accessible for a $200-$3,000 partnership
+4. Would do UGC (user-generated content) — making videos/posts for brands to use
 
 Luma's products: Heart Health Bundle, Gut Health Protocol, Longevity Protocol, Sleep/Mood, Blood Sugar, NAD+, Berberine, NAC, Probiotic.
 
 WHO WE'RE LOOKING FOR (in order of priority):
-1. **Micro-doctor creators** (5K-300K followers) — real MDs, DOs who make health content on TikTok/IG/YouTube
-2. **Nurse practitioners & PAs with content** — NPs and PAs who review supplements, share health tips
-3. **Registered Dietitians (RDs)** — nutrition professionals who create content about gut health, supplements
-4. **PharmDs with social presence** — pharmacists who review supplements and medications on social
-5. **Naturopathic doctors (NDs)** — naturopaths who discuss supplements and natural health
-6. **Medical researchers/PhDs** — scientists who translate research for lay audiences
+1. **Doctor UGC creators** (1K-50K followers) — MDs, DOs who make content-for-hire. They film videos for brands to post. Small followings are GREAT — they're more affordable and responsive.
+2. **Micro-doctor creators** (5K-100K followers) — real MDs, DOs who make health content on TikTok/IG/YouTube. Small enough to be accessible.
+3. **Nurse practitioners & PAs with content** — NPs and PAs who review supplements, share health tips. Under 100K followers preferred.
+4. **Registered Dietitians (RDs)** — nutrition professionals who create content about gut health, supplements
+5. **PharmDs with social presence** — pharmacists who review supplements and medications on social
+6. **Naturopathic doctors (NDs)** — naturopaths who discuss supplements and natural health
+
+SWEET SPOT: Doctors with 2K-50K followers who have "business inquiries" in their bio, or who mention UGC/content-for-hire. These are the most accessible and affordable.
 
 WHO TO EXPLICITLY EXCLUDE:
 - Celebrity doctors: Andrew Huberman, Peter Attia, Rhonda Patrick, Dr. Berg, Dr. Oz, Mark Hyman, Dr. Mike Varshavski, Dr. Eric Berg
-- Anyone with 1M+ followers
+- Anyone with 200K+ followers (too expensive, too busy)
+- Anyone with 500K+ followers (absolutely exclude)
 - Hospital/institutional accounts
 - Doctors who only post about cosmetic/plastic surgery (unless they also do wellness)
 - Medical news aggregator accounts
@@ -197,7 +201,7 @@ Given the search query, return a JSON object with:
   "subreddits": ["relevant medical/health subreddits"],
   "ugc_search_terms": ["terms for finding doctor UGC"],
   "credential_signals": ["board certified", "fellowship trained", "residency at...", etc.],
-  "follower_range": {"min": 5000, "max": 500000},
+  "follower_range": {"min": 1000, "max": 150000},
   "content_fit_signals": ["supplement reviews", "evidence-based", "patient education"],
   "reasoning": "brief explanation of your search strategy"
 }
@@ -211,8 +215,19 @@ THIS IS DOCTOR DISCOVERY MODE. You are specifically looking for credentialed med
 
 YOUR CORE JOB: Extract INDIVIDUAL DOCTORS/MEDICAL PROFESSIONALS from these search results who:
 1. Have REAL medical credentials (MD, DO, NP, PA, RD, PharmD, PhD, ND)
-2. Create content on social media (even small accounts)
+2. Create content on social media — SMALL accounts (under 100K) are IDEAL
 3. Would realistically partner with a DTC supplement brand at $200-$3,000 per deliverable
+4. Ideally would do UGC (content-for-hire) — making videos/posts that brands can use on their own channels
+
+CRITICAL SIZE PREFERENCE — WE WANT SMALL CREATORS:
+- 1K-20K followers = IDEAL. These doctors are hungry for partnerships, responsive, affordable ($200-$800/video)
+- 20K-50K followers = Great. Still very accessible and within budget
+- 50K-100K followers = Good. Approaching upper budget but worth it for strong credentials
+- 100K-200K followers = Caution. Score 10 points lower. May be too expensive or unresponsive
+- 200K+ followers = Penalize heavily. Score max 40. Almost certainly out of budget
+- 500K+ followers = Skip entirely. Score 0.
+
+UGC BONUS: If a doctor mentions "UGC", "content for brands", "whitelisting", "usage rights", "content creator for hire", or appears on UGC platforms → add 15 points to score. These are the MOST valuable finds.
 
 CRITICAL — CREDENTIAL VERIFICATION:
 - Look for credential signals: "MD", "DO", "Dr.", "NP", "PA-C", "RD", "RDN", "PharmD", "PhD", "ND", "DACM"
@@ -220,14 +235,14 @@ CRITICAL — CREDENTIAL VERIFICATION:
 - If someone claims to be a "health coach" or "wellness expert" without medical credentials, they are NOT a doctor — still include but set creator_type to "Health Influencer" not "Doctor/Medical"
 - Naturopathic doctors (ND) should be flagged as such — they're valid but different from MDs
 
-SCORING FOR DOCTORS (credential weight is HIGH):
-- 90-100: Verified credential (MD/DO) + social handle + followers + relevant topic + partnership signals
-- 80-89: Verified credential + social handle + relevant topic (missing followers or contact)
-- 70-79: Likely credentialed (Dr. title) + social presence + relevant topic
+SCORING FOR DOCTORS (small + credentialed = highest score):
+- 90-100: Verified credential (MD/DO) + social handle + UNDER 50K followers + relevant topic + UGC/partnership signals
+- 80-89: Verified credential + social handle + under 100K followers + relevant topic
+- 70-79: Likely credentialed (Dr. title) + social presence + under 100K + relevant topic
 - 60-69: Allied health (NP, RD, PharmD) + social presence + relevant topic
 - 50-59: Credential unclear but health professional with social presence
-- 40-49: Found on professional directory but no visible social presence
-- Below 30: Celebrity doctor, no credentials found, or institutional account
+- 40-49: Found on professional directory but no visible social presence, OR 100K-200K followers
+- Below 30: Celebrity doctor, no credentials found, 200K+ followers, or institutional account
 
 DATA QUALITY — SAME RULES APPLY:
 - No social handle → max score 30 (doctors without social are useless for partnerships)
@@ -236,7 +251,8 @@ DATA QUALITY — SAME RULES APPLY:
 
 AUTOMATICALLY SCORE LOW (below 30):
 - Celebrity doctors: Huberman, Attia, Rhonda Patrick, Dr. Berg, Dr. Oz, Mark Hyman, Dr. Mike, etc.
-- Anyone with 1M+ followers
+- Anyone with 200K+ followers (too expensive, won't respond to $200-$3K offers)
+- Anyone with 500K+ followers (skip entirely, score 0)
 - Hospital/institutional accounts
 - Medical news aggregators
 
@@ -312,20 +328,21 @@ Your job is to find ACCESSIBLE, PARTNERSHIP-READY creators — NOT celebrities o
 Luma's products: Heart Health Bundle, Gut Health Protocol, Longevity Protocol, Sleep/Mood, Blood Sugar, NAD+, Berberine, NAC, Probiotic.
 
 WHO WE'RE LOOKING FOR (in order of priority):
-1. **UGC creators** — people who make content-for-hire, typically $200-$1000/video. They may not even have huge followings. Search UGC marketplaces, UGC-specific hashtags, and creator directories.
-2. **Micro/mid-tier doctor creators** (5K-500K followers) — real MDs, DOs, NPs, RDs who make health content but are NOT famous. Think: a family medicine doctor with 30K TikTok followers who does supplement reviews. NOT Andrew Huberman, Dr. Berg, Dr. Mark Hyman, etc.
-3. **Niche wellness creators** (10K-300K followers) — gut health, heart health, longevity, biohacking creators who actively do brand partnerships at accessible rates ($500-$3000/post).
-4. **Gen Z health/wellness creators** — younger creators building audiences around health, supplements, nutrition. Typically 10K-200K followers.
+1. **UGC creators** — people who make content-for-hire, typically $200-$1000/video. They may not even have huge followings — 1K-30K is IDEAL. Search UGC marketplaces, UGC-specific hashtags, and creator directories.
+2. **Micro/small doctor creators** (1K-100K followers) — real MDs, DOs, NPs, RDs who make health content but are NOT famous. Think: a family medicine doctor with 15K TikTok followers who does supplement reviews. NOT Andrew Huberman, Dr. Berg, Dr. Mark Hyman, etc.
+3. **Niche wellness creators** (5K-100K followers) — gut health, heart health, longevity, biohacking creators who actively do brand partnerships at accessible rates ($200-$2000/post).
+4. **Gen Z health/wellness creators** — younger creators building audiences around health, supplements, nutrition. Typically 5K-80K followers.
 5. **Mom/parenting health creators** — moms who talk about family health, supplements, nutrition. Typically open to partnerships.
 
 WHO TO EXPLICITLY EXCLUDE:
-- Anyone with 1M+ followers (too expensive, won't respond)
+- Anyone with 200K+ followers (too expensive, won't respond)
+- Anyone with 500K+ followers (absolutely exclude)
 - Celebrity doctors (Huberman, Dr. Berg, Dr. Oz, Dr. Mark Hyman, Dr. Eric Berg, Peter Attia, Rhonda Patrick, etc.)
 - Major podcasters (unless they're small/mid-tier)
 - Anyone who clearly only works with Fortune 500 brands
 - Pure entertainment accounts that don't do health content
 
-BUDGET CONTEXT: Luma's per-creator budget is $200-$3000. Creators charging $5K+ per post are generally out of range unless they're a perfect strategic fit.
+BUDGET CONTEXT: Luma's per-creator budget is $200-$3000. Creators charging $5K+ per post are generally out of range. We STRONGLY prefer creators under 100K followers who are affordable and responsive.
 
 Given the search query, return a JSON object with:
 {
@@ -721,15 +738,26 @@ DO NOT include people who are just LISTED on a talent directory or marketplace w
 CRITICAL BUSINESS CONTEXT — WHO IS AND ISN'T VIABLE:
 
 IDEAL CREATORS (score 70-100, but only if data is complete):
-- UGC creators who make content-for-hire ($200-$1000/video) — must have portfolio or social handle
-- Micro doctors (5K-300K followers) — real MDs/DOs/NPs with visible social media presence
-- Niche wellness creators (10K-300K) who actively partner with supplement/health brands
+- UGC creators who make content-for-hire ($200-$1000/video) — must have portfolio or social handle. 1K-30K followers is PERFECT.
+- Micro doctors (1K-100K followers) — real MDs/DOs/NPs with visible social media presence
+- Niche wellness creators (5K-100K) who actively partner with supplement/health brands
 - Gen Z health creators building audiences, open to gifted/paid partnerships
 - Mom/parenting health creators who review products
 
+SIZE PREFERENCE — SMALLER IS BETTER:
+- 1K-20K followers = IDEAL (+10 bonus). Affordable, responsive, eager for partnerships
+- 20K-50K followers = Great. Still very accessible
+- 50K-100K followers = Good. Within budget for strong fits
+- 100K-200K followers = Caution. Score 10 points lower. May be too expensive
+- 200K+ followers = Penalize heavily. Score max 40.
+- 500K+ followers = Skip entirely. Score 0.
+
+UGC BONUS: If a creator mentions "UGC", "content for brands", "content creator for hire", "whitelisting", or appears on UGC platforms (Collabstr, Billo, JoinBrands) → add 15 points to score.
+
 AUTOMATICALLY SCORE LOW (below 30):
 - Celebrity doctors: Andrew Huberman, Peter Attia, Rhonda Patrick, Dr. Berg, Dr. Oz, Mark Hyman, Dr. Mike, or anyone clearly famous
-- Anyone with 1M+ followers
+- Anyone with 200K+ followers (too expensive, won't respond to our budget)
+- Anyone with 500K+ followers (skip entirely, score 0)
 - Major podcast hosts with millions of listeners
 - Pure entertainment accounts that don't discuss health/wellness
 - Generic health news sites, hospitals, or institutional accounts
@@ -740,12 +768,12 @@ GEOGRAPHIC PRIORITY:
 - Other countries: score -10 and flag as "non-US creator"
 - Extract country/region whenever possible from bio, location, domain (.au = Australia, .uk = UK, etc.)
 
-SCORING (data completeness is a HARD requirement):
-- 90-100: Has social handle + follower count + email/contact + relevant niche + partnership signals. Perfect fit.
-- 70-89: Has social handle + either followers or contact info + relevant niche. Strong fit.
-- 50-69: Has social handle but missing followers/contact. OR right niche but missing key data.
-- 30-49: Name only, no handle, or only found via directory listing. Needs more research.
-- Below 30: Celebrity, no useful data, wrong niche, or institutional.
+SCORING (data completeness + small size = highest scores):
+- 90-100: Has social handle + under 50K followers + email/contact + relevant niche + UGC/partnership signals. Perfect fit.
+- 70-89: Has social handle + under 100K followers + either followers or contact info + relevant niche. Strong fit.
+- 50-69: Has social handle but missing followers/contact. OR right niche but 100K-200K followers.
+- 30-49: Name only, no handle, 200K+ followers, or only found via directory listing.
+- Below 30: Celebrity, 500K+ followers, no useful data, wrong niche, or institutional.
 
 For each person you identify, extract:
 
@@ -758,7 +786,7 @@ For each person you identify, extract:
 7. **Brand partnerships**: Brands they work with — especially DTC/supplement brands
 8. **Partnership signals**: "business inquiries", "PR friendly", "DM for collabs", UGC in bio
 9. **Country/Region**: Where they're based (extract from bio, location, URL domains)
-10. **Estimated rate**: Based on follower count (micro: $200-$800, mid: $800-$3000)
+10. **Estimated rate**: Based on follower count (nano/micro: $200-$500, small: $500-$1500, mid: $1500-$3000)
 11. **Creator type**: Pick ONE from this exact list: "Doctor/Medical", "UGC Creator", "Health Influencer", "Fitness Creator", "Mom/Parenting", "Wellness/Lifestyle", "Nutritionist/Dietitian", "Podcaster", "Other"
 12. **Content niches**: Pick 1-3 from this exact list: "Heart Health", "Gut Health", "Longevity", "Supplements", "Nutrition", "Fitness", "General Wellness", "Weight Loss", "Mental Health", "Biohacking", "Women's Health", "Men's Health"
 

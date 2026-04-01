@@ -66,6 +66,8 @@ export default function DiscoverTab() {
   const [searchStartTime, setSearchStartTime] = useState(null);
   const [elapsed, setElapsed] = useState(0);
   const [pipelineCreators, setPipelineCreators] = useState([]);
+  const [blacklist, setBlacklist] = useState([]);
+  const [blockedCount, setBlockedCount] = useState(0);
 
   const doctorMode = searchMode === 'doctor';
   const brandIntelMode = searchMode === 'brand_intel';
@@ -89,6 +91,7 @@ export default function DiscoverTab() {
   useEffect(() => {
     api('/creators', { params: { per_page: 500 } }).then(d => setExisting(d.creators || [])).catch(() => {});
     api('/clickup/pipeline-creators').then(d => setPipelineCreators(d.creators || [])).catch(() => {});
+    api('/blacklist').then(d => setBlacklist(d.blacklisted || [])).catch(() => {});
   }, []);
 
   // On mount: load recent searches + restore last search or resume running search
@@ -225,15 +228,46 @@ export default function DiscoverTab() {
     }) || null;
   };
 
+  const blacklistSet = useMemo(() => {
+    const s = new Set();
+    blacklist.forEach(b => {
+      if (b.name) s.add(b.name.toLowerCase().trim());
+      if (b.handle) s.add(b.handle.toLowerCase().replace('@', '').trim());
+    });
+    return s;
+  }, [blacklist]);
+
+  const isBlacklisted = (r) => {
+    if (r.name && blacklistSet.has(r.name.toLowerCase().trim())) return true;
+    const h = (r.handle || '').toLowerCase().replace('@', '').trim();
+    return h && blacklistSet.has(h);
+  };
+
+  const handleBlacklist = async (creator) => {
+    try {
+      await api('/blacklist', { method: 'POST', body: {
+        name: creator.name,
+        handle: creator.handle,
+        email: creator.email,
+        platform: creator.platform,
+      }});
+      setBlacklist(prev => [...prev, { name: creator.name, handle: creator.handle }]);
+      // Remove from current results visually
+      setResults(p => p ? { ...p, results: p.results.filter(r => r.id !== creator.id) } : p);
+    } catch (e) { console.error('[Blacklist]', e); }
+  };
+
   const sorted = useMemo(() => {
     if (!results?.results) return [];
-    let t = results.results.map(r => ({ ...r, _isDup: checkDup(r) }));
-    t = t.filter(r => !r._isDup);
+    let t = results.results.map(r => ({ ...r, _isDup: checkDup(r), _isBlocked: isBlacklisted(r) }));
+    const blocked = t.filter(r => r._isBlocked).length;
+    setBlockedCount(blocked);
+    t = t.filter(r => !r._isDup && !r._isBlocked);
     if (typeFilter) t = t.filter(r => (r.ai_analysis?.creator_type || '') === typeFilter || (r.categories || []).some(c => c.toLowerCase().includes(typeFilter.toLowerCase())));
     if (nicheFilter) t = t.filter(r => (r.ai_analysis?.content_niches || []).includes(nicheFilter) || (r.categories || []).some(c => c.toLowerCase().includes(nicheFilter.toLowerCase())));
     if (credentialFilter) t = t.filter(r => (r.ai_analysis?.credential_tier || r.raw_data?.credential_tier || '') === credentialFilter);
     return t.sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0));
-  }, [results, dedupSet, typeFilter, nicheFilter, credentialFilter, savedThisSession]);
+  }, [results, dedupSet, blacklistSet, typeFilter, nicheFilter, credentialFilter, savedThisSession]);
 
   const newC = sorted.length;
   const dupC = results?.results ? results.results.filter(r => checkDup(r)).length : 0;

@@ -403,3 +403,23 @@ class ScraperJob(Base):
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ─── BLACKLIST ───
+
+class BlacklistedCreator(Base):
+    """Creators the coordinator has permanently rejected. Never show in discovery results."""
+    __tablename__ = "blacklisted_creators"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    handle: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    platform: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    blacklisted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_blacklist_name", "name"),
+        Index("ix_blacklist_handle", "handle"),
+    )

@@ -16,7 +16,7 @@ from sqlalchemy import select, func, or_, and_, desc, asc, delete
 from app.core.database import get_db
 from app.models.models import (
     Creator, CreatorTag, CreatorNote, DiscoverySearch, DiscoveryResult,
-    OutreachEmail, EmailTemplate, OutreachStatus,
+    OutreachEmail, EmailTemplate, OutreachStatus, BlacklistedCreator,
 )
 from app.models.schemas import (
     CreatorCreate, CreatorUpdate, CreatorResponse, CreatorListResponse,
@@ -401,6 +401,27 @@ async def discover_creators(
                     # Step 4: Deduplicate
                     unique = deduplicate_results(analyzed)
                     unique.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
+
+                    # Step 4b: Filter out blacklisted creators
+                    bl_result = await session.execute(select(BlacklistedCreator))
+                    blacklisted = bl_result.scalars().all()
+                    bl_names = set()
+                    bl_handles = set()
+                    for bl in blacklisted:
+                        if bl.name:
+                            bl_names.add(bl.name.lower().strip())
+                        if bl.handle:
+                            bl_handles.add(bl.handle.lower().strip().lstrip("@"))
+                    if bl_names or bl_handles:
+                        before_count = len(unique)
+                        unique = [r for r in unique if not (
+                            (r.get("name", "").lower().strip() in bl_names) or
+                            (r.get("handle", "").lower().strip().lstrip("@") in bl_handles if r.get("handle") else False)
+                        )]
+                        blocked = before_count - len(unique)
+                        if blocked > 0:
+                            logger.info(f"[Discovery] Filtered {blocked} blacklisted creators")
+
                     final = unique[:max_results_val]
 
                     # Step 5: Store results
@@ -1003,6 +1024,67 @@ async def remove_tag(creator_id: UUID, tag: str, db: AsyncSession = Depends(get_
         await db.delete(existing)
         await db.commit()
     return {"removed": True}
+
+
+# ─── BLACKLIST ───
+
+@router.get("/blacklist")
+async def get_blacklist(db: AsyncSession = Depends(get_db)):
+    """Get all blacklisted creators."""
+    result = await db.execute(
+        select(BlacklistedCreator).order_by(desc(BlacklistedCreator.blacklisted_at))
+    )
+    items = result.scalars().all()
+    return {
+        "blacklisted": [
+            {
+                "id": str(b.id),
+                "name": b.name,
+                "handle": b.handle,
+                "platform": b.platform,
+                "reason": b.reason,
+                "blacklisted_at": b.blacklisted_at.isoformat() if b.blacklisted_at else None,
+            }
+            for b in items
+        ],
+        "count": len(items),
+    }
+
+
+@router.post("/blacklist")
+async def add_to_blacklist(
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+):
+    """Add a creator to the blacklist. Accepts {name, handle, email, platform, reason}."""
+    name = data.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name is required")
+
+    bl = BlacklistedCreator(
+        name=name,
+        handle=data.get("handle", "").strip().lstrip("@") or None,
+        email=data.get("email", "").strip() or None,
+        platform=data.get("platform") or None,
+        reason=data.get("reason", "").strip() or None,
+    )
+    db.add(bl)
+    await db.commit()
+    logger.info(f"[Blacklist] Added: {name} (@{bl.handle or 'no handle'})")
+    return {"success": True, "id": str(bl.id), "name": name}
+
+
+@router.delete("/blacklist/{blacklist_id}")
+async def remove_from_blacklist(blacklist_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Remove a creator from the blacklist."""
+    bl = await db.get(BlacklistedCreator, blacklist_id)
+    if not bl:
+        raise HTTPException(status_code=404, detail="Blacklist entry not found")
+    name = bl.name
+    await db.delete(bl)
+    await db.commit()
+    logger.info(f"[Blacklist] Removed: {name}")
+    return {"success": True, "removed": name}
 
 
 # ─── STATS / DASHBOARD ───
